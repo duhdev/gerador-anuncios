@@ -9,54 +9,91 @@
   <script src="coi-serviceworker.min.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Gerador de Anúncios</h1>
-    <p>Coloque a foto do produto. O app deixa a foto pronta para o Mercado Livre e escreve o anúncio com IA.</p>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="currentColor"/><path d="M9 21.5 14 15l3.5 4 2.5-3 3 5.5z" fill="#fff"/><circle cx="20.5" cy="11" r="2.4" fill="#fff"/></svg>
+      <div>
+        <strong>Gerador de Anúncios</strong>
+        <span>Fotos, anúncio e vídeo para o Mercado Livre, com IA grátis</span>
+      </div>
+    </div>
+    <button id="openConfig" type="button" class="ghost pill-btn"><span id="keyDot" class="dot"></span> Configurar IA</button>
   </header>
 
   <main>
-    <details id="config" class="card">
-      <summary>Configurações da IA</summary>
-      <label>Chave da API do Google Gemini (grátis)
-        <input id="apiKey" type="password" placeholder="Cole aqui sua chave AIza..." autocomplete="off">
-      </label>
-      <p class="hint">Crie a chave em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ela fica salva só neste navegador.</p>
-      <label>Modelo
-        <input id="model" list="models" value="gemini-2.5-flash">
-        <datalist id="models">
-          <option value="gemini-2.5-flash">
-          <option value="gemini-2.5-flash-lite">
-          <option value="gemini-flash-latest">
-          <option value="gemini-flash-lite-latest">
-        </datalist>
-      </label>
-      <label class="check"><input id="useSearch" type="checkbox" checked> Pesquisar no Google o que está vendendo hoje no Mercado Livre</label>
-      <button id="saveConfig" type="button">Salvar</button>
-      <span id="configMsg" class="hint"></span>
-    </details>
-
-    <section class="card">
-      <label id="drop" class="drop">
-        <input id="file" type="file" accept="image/*" multiple hidden>
-        <strong>Clique ou arraste as fotos dos produtos aqui</strong>
-        <span>JPG, PNG ou WEBP · pode mandar várias de uma vez (um anúncio por foto)</span>
-      </label>
-      <div class="options">
-        <label class="check"><input id="removeBg" type="checkbox" checked> Remover o fundo automaticamente</label>
-        <label class="check"><input id="aiUpscale" type="checkbox" checked> Reconstruir detalhes com IA (fotos pequenas ou borradas)</label>
-        <label class="check"><input id="maxSharp" type="checkbox"> Nitidez máxima (para fotos muito borradas)</label>
-        <label class="check"><input id="colorFix" type="checkbox" checked> Realçar cores e contraste</label>
-        <label class="check"><input id="mirrorPair" type="checkbox" checked> Foto do par com lado direito e esquerdo (desmarque se a peça não tem lado)</label>
-        <label class="extra">Informações extras (opcional): marca, modelo, medidas, veículo compatível...
-          <input id="extraInfo" placeholder="Ex.: Lanterna traseira Renault Master 2014 a 2022, lado direito">
+    <details id="config" class="card config">
+      <summary>
+        <span class="sum-title">Configurações da IA</span>
+        <span class="sum-hint">Chave grátis do Google Gemini</span>
+      </summary>
+      <ol class="setup">
+        <li>Abra <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> e entre com sua conta Google.</li>
+        <li>Clique em <b>Create API key</b> e copie a chave (começa com AIza).</li>
+        <li>Cole aqui e clique em Salvar. A chave fica salva só neste navegador.</li>
+      </ol>
+      <div class="config-grid">
+        <label>Chave da API
+          <input id="apiKey" type="password" placeholder="AIza..." autocomplete="off">
         </label>
-        <label class="extra">Foto do veículo ou ambiente para o fundo (opcional; sem ela o app busca uma foto real do veículo)
-          <input id="bgFile" type="file" accept="image/*">
-        </label>
-        <label class="extra">Veículo ao fundo (fotos 4 e 5): <b id="bgOpacityVal">100%</b> visível
-          <input id="bgOpacity" type="range" min="30" max="100" value="100">
+        <label>Modelo
+          <input id="model" list="models" value="gemini-2.5-flash">
+          <datalist id="models">
+            <option value="gemini-2.5-flash">
+            <option value="gemini-flash-latest">
+            <option value="gemini-flash-lite-latest">
+            <option value="gemini-2.5-flash-lite">
+          </datalist>
         </label>
       </div>
+      <label class="switch"><input id="useSearch" type="checkbox" checked><span></span> Pesquisar no Google o que está vendendo hoje no Mercado Livre</label>
+      <p class="hint">O plano grátis do Gemini tem um limite por dia. Se acabar, o app usa automaticamente um modelo mais leve, com cota maior.</p>
+      <div class="row">
+        <button id="saveConfig" type="button">Salvar</button>
+        <span id="configMsg" class="hint"></span>
+      </div>
+    </details>
+
+    <section class="card upload">
+      <div class="upload-head">
+        <h1>Crie o anúncio completo a partir de uma foto</h1>
+        <ul class="features">
+          <li>5 fotos 1200x1200</li>
+          <li>Título, descrição e ficha técnica</li>
+          <li>Vídeo para o Clips</li>
+        </ul>
+      </div>
+      <label id="drop" class="drop">
+        <input id="file" type="file" accept="image/*" multiple hidden>
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V13m0 0-7 7m7-7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 29v6a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        <strong>Arraste as fotos dos produtos aqui</strong>
+        <span>ou clique para escolher · JPG, PNG ou WEBP · uma foto vira um anúncio · também dá para colar (Ctrl+V)</span>
+      </label>
+      <label class="extra">Informações extras (opcional, ajuda a IA a acertar)
+        <input id="extraInfo" placeholder="Ex.: Lanterna traseira Renault Master 2014 a 2022, lado direito">
+      </label>
+
+      <details class="adjust">
+        <summary>Ajustes</summary>
+        <div class="adjust-grid">
+          <div>
+            <h4>Fotos</h4>
+            <label class="switch"><input id="removeBg" type="checkbox" checked><span></span> Remover o fundo automaticamente</label>
+            <label class="switch"><input id="aiUpscale" type="checkbox" checked><span></span> Reconstruir detalhes com IA</label>
+            <label class="switch"><input id="maxSharp" type="checkbox"><span></span> Nitidez máxima (fotos muito borradas)</label>
+            <label class="switch"><input id="colorFix" type="checkbox" checked><span></span> Realçar cores e contraste</label>
+            <label class="switch"><input id="mirrorPair" type="checkbox" checked><span></span> Foto do par com lado direito e esquerdo</label>
+          </div>
+          <div>
+            <h4>Veículo ao fundo (fotos 4 e 5)</h4>
+            <label class="extra">Foto do veículo (opcional; sem ela o app busca uma foto real)
+              <input id="bgFile" type="file" accept="image/*">
+            </label>
+            <label class="extra">Veículo visível: <b id="bgOpacityVal">100%</b>
+              <input id="bgOpacity" type="range" min="30" max="100" value="100">
+            </label>
+          </div>
+        </div>
+      </details>
       <p id="status" class="status" hidden></p>
     </section>
 
@@ -66,6 +103,7 @@
     </div>
     <div id="jobs"></div>
   </main>
+  <div id="toast" class="toast" hidden></div>
 
   <script type="module" src="app.js"></script>
 </body>

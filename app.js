@@ -42,12 +42,25 @@ function loadConfig() {
   if (!$('apiKey').value) $('config').open = true;
 }
 
+function openConfig() {
+  $('config').open = true;
+  $('config').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => $('apiKey').focus(), 300);
+}
+
+function keyState() {
+  const ok = !!store.get('gemini_key', '');
+  $('keyDot').classList.toggle('ok', ok);
+  $('openConfig').lastChild.textContent = ok ? ' IA configurada' : ' Configurar IA';
+}
+
 function saveConfig() {
   store.set('gemini_key', $('apiKey').value.trim());
   store.set('gemini_model', $('model').value.trim() || 'gemini-2.5-flash');
   store.set('use_search', $('useSearch').checked ? '1' : '0');
-  $('configMsg').textContent = 'Salvo.';
-  setTimeout(() => ($('configMsg').textContent = ''), 2000);
+  keyState();
+  toast($('apiKey').value.trim() ? 'Configurações salvas.' : 'Salvo, mas falta a chave.');
+  if ($('apiKey').value.trim()) $('config').open = false;
 }
 
 const opacity = () => Number($('bgOpacity').value) / 100;
@@ -66,12 +79,20 @@ function el(tag, attrs = {}, ...children) {
   return e;
 }
 
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 1800);
+}
+
 function copyButton(getText) {
   const b = el('button', { class: 'ghost', type: 'button' }, 'Copiar');
   b.onclick = async () => {
-    try { await navigator.clipboard.writeText(getText()); b.textContent = 'Copiado!'; }
-    catch { b.textContent = 'Selecione e copie'; }
-    setTimeout(() => (b.textContent = 'Copiar'), 1500);
+    try { await navigator.clipboard.writeText(getText()); toast('Copiado!'); }
+    catch { toast('Não deu para copiar; selecione o texto e copie.'); }
   };
   return b;
 }
@@ -104,9 +125,9 @@ class Job {
   buildUi() {
     this.statusEl = el('p', { class: 'status' }, 'Na fila...');
     this.grid = el('div', { class: 'grid' });
-    this.checkEl = el('div', { class: 'checks' });
-    this.adEl = el('div', {});
-    this.regenBtn = el('button', { type: 'button', class: 'ghost' }, 'Gerar anúncio de novo');
+    this.checkEl = el('div', { class: 'checks' }, el('p', { class: 'empty' }, 'Aparece quando as fotos ficarem prontas.'));
+    this.adEl = el('div', {}, el('p', { class: 'empty' }, 'O anúncio aparece aqui assim que a foto principal ficar pronta.'));
+    this.regenBtn = el('button', { type: 'button', class: 'ghost' }, 'Gerar de novo');
     this.bgBtn = el('button', { type: 'button', class: 'ghost' }, 'Trocar veículo do fundo');
     this.regenBtn.onclick = () => this.runAd();
     this.bgBtn.onclick = () => this.nextBackdrop();
@@ -118,18 +139,62 @@ class Job {
       this.slotEls[s.id] = fig;
       this.grid.append(fig);
     });
+    // etapas mostradas no topo do cartão
+    this.stepEls = {};
+    const steps = [['foto', 'Fotos'], ['anuncio', 'Anúncio'], ['veiculo', 'Veículo'], ['video', 'Vídeo']];
+    const bar = el('div', { class: 'steps-bar' }, steps.map(([k, n]) => (this.stepEls[k] = el('span', { class: 'stp' }, n))));
+    this.titleEl = el('h2', {}, this.file.name);
+    const thumb = el('img', { class: 'thumb', alt: '' });
+    thumb.src = URL.createObjectURL(this.file);
+
+    // abas
+    const panes = {
+      fotos: ['Fotos', el('div', {}, el('div', { class: 'panel-actions' }, this.bgBtn), this.grid)],
+      anuncio: ['Anúncio', el('div', {}, el('div', { class: 'panel-actions' }, this.regenBtn), this.adEl)],
+      video: ['Vídeo para Clips', this.buildClipUi()],
+      conferencia: ['Conferência', this.checkEl],
+    };
+    this.tabEls = {};
+    this.paneEls = {};
+    const tabs = el('div', { class: 'tabs', role: 'tablist' });
+    const body = el('div', {});
+    for (const [k, [name, content]] of Object.entries(panes)) {
+      const t = el('button', { type: 'button', class: 'tab', role: 'tab' }, name);
+      t.onclick = () => this.showTab(k);
+      this.tabEls[k] = t;
+      tabs.append(t);
+      this.paneEls[k] = el('div', { class: 'panel', role: 'tabpanel' }, content);
+      body.append(this.paneEls[k]);
+    }
     this.root = el('section', { class: 'card job' },
-      el('div', { class: 'ad-head' }, el('h2', {}, this.file.name),
-        el('span', { class: 'job-actions' }, this.bgBtn, this.regenBtn)),
-      this.statusEl, this.grid,
-      el('h3', { class: 'sub' }, 'Conferência para o Mercado Livre'), this.checkEl,
-      el('h3', { class: 'sub' }, 'Vídeo para o Mercado Livre Clips'), this.buildClipUi(),
-      el('h3', { class: 'sub' }, 'Anúncio'), this.adEl);
+      el('div', { class: 'job-head' }, thumb,
+        el('div', { class: 'job-title' }, this.titleEl, this.statusEl), bar),
+      tabs, body);
+    this.showTab('fotos');
     $('jobs').append(this.root);
   }
 
-  status(msg, err = false) {
-    this.statusEl.textContent = msg || '';
+  showTab(k) {
+    for (const [n, t] of Object.entries(this.tabEls)) {
+      t.classList.toggle('on', n === k);
+      t.setAttribute('aria-selected', n === k);
+      this.paneEls[n].hidden = n !== k;
+    }
+    if (k !== 'video') this.stopPreview?.();
+  }
+
+  badge(k, text, err = false) {
+    const t = this.tabEls[k];
+    t.querySelector('.badge')?.remove();
+    if (text) t.append(' ', el('span', { class: 'badge' + (err ? ' err' : '') }, text));
+  }
+
+  step(k, state) {
+    this.stepEls[k].className = 'stp' + (state ? ' ' + state : '');
+  }
+
+  status(msg, err = false, busy = !err) {
+    this.statusEl.replaceChildren(...(busy && msg ? [el('span', { class: 'spin' })] : []), msg || '');
     this.statusEl.classList.toggle('err', err);
     if (msg) status(jobs.length > 1 ? `Foto ${this.index + 1} de ${jobs.length}: ${msg}` : msg, err);
   }
@@ -172,6 +237,7 @@ class Job {
   }
 
   async run() {
+    this.step('foto', 'work');
     try {
       const opts = {
         removeBg: $('removeBg').checked, aiUpscale: $('aiUpscale').checked, maxSharp: $('maxSharp').checked, colorFix: $('colorFix').checked,
@@ -185,19 +251,23 @@ class Job {
       await this.setSlot('sombra', renderShadow(this.layer));
       await this.renderPair();
       this.renderChecks();
+      this.step('foto', 'done');
     } catch (e) {
       console.error(e);
+      this.step('foto', 'fail');
       this.status('Erro ao tratar a foto: ' + (e.message || e), true);
       return;
     }
 
     SCENES.forEach((id) => this.slotMessage(id, 'Aguardando a IA identificar o veículo...'));
     await this.runAd();
+    this.step('veiculo', 'work');
     await this.nextBackdrop();
+    this.step('veiculo', this.blobs['fundo-frente'] ? 'done' : 'fail');
     this.fillCaptions();
     this.clipBtn.disabled = this.previewBtn.disabled = false;
-    this.status(this.ad ? 'Pronto! Confira os campos marcados com [CONFIRMAR] antes de publicar.' : this.statusEl.textContent,
-      !this.ad);
+    if (this.ad) this.status('Pronto! Confira os campos marcados com [CONFIRMAR] antes de publicar.', false, false);
+    else this.status(`Fotos prontas, mas o anúncio não foi gerado: ${this.adError || 'erro desconhecido'}`, true);
     updateBatchBar();
   }
 
@@ -295,7 +365,7 @@ class Job {
       const c = el('input', { type: 'checkbox' });
       c.checked = store.get(key, def) === '1';
       c.onchange = () => { store.set(key, c.checked ? '1' : '0'); this.updateClipHints(); };
-      return [c, el('label', { class: 'check' }, c, ' ' + label)];
+      return [c, el('label', { class: 'switch' }, c, el('span'), ' ' + label)];
     };
     let row;
     [this.musicEl, row] = box('clip_music', '1', 'Música de fundo (criada pelo app, livre de direitos autorais)');
@@ -510,6 +580,7 @@ class Job {
         el('a', { class: 'btn', href: this.clipUrl, download: `${this.base}-clip.${res.ext}` }, `Baixar vídeo (${res.ext.toUpperCase()}, ${mb} MB)`));
       const warn = [res.warning, this.voiceWarn].filter(Boolean).join(' ');
       this.clipMsg.textContent = warn || `Vídeo pronto: ${Math.round(duration)} s, 1080x1920, ${res.ext.toUpperCase()}.`;
+      this.step('video', 'done');
       this.clipMsg.classList.toggle('warn', !!warn);
     } catch (e) {
       console.error(e);
@@ -546,6 +617,8 @@ class Job {
       (f.problemas || []).filter(Boolean).forEach((t) => add('warn', t));
     }
     this.checkEl.replaceChildren(el('ul', { class: 'checklist' }, items));
+    const bad = items.filter((li) => li.className !== 'c-ok').length;
+    this.badge('conferencia', bad ? String(bad) : '');
   }
 
   // ---------- anúncio ----------
@@ -553,6 +626,8 @@ class Job {
   async runAd() {
     if (!this.whiteBlob) return;
     this.regenBtn.disabled = true;
+    this.step('anuncio', 'work');
+    this.adError = '';
     try {
       this.ad = await generateAd(this.whiteBlob, {
         key: store.get('gemini_key', '') || $('apiKey').value.trim(),
@@ -564,10 +639,22 @@ class Job {
       this.renderAd();
       this.renderChecks();
       this.fillCaptions();
+      this.step('anuncio', 'done');
+      this.badge('anuncio', '');
+      if (this.ad.produto_identificado) this.titleEl.textContent = this.ad.produto_identificado;
     } catch (e) {
       console.error(e);
-      this.status(e.message || String(e), true);
-      if (/chave/i.test(e.message)) $('config').open = true;
+      this.adError = e.message || String(e);
+      this.step('anuncio', 'fail');
+      this.badge('anuncio', '!', true);
+      this.status(this.adError, true);
+      const retry = el('button', { type: 'button' }, 'Tentar de novo');
+      retry.onclick = () => this.runAd().then(() => { if (this.ad) this.status('Anúncio gerado.', false, false); });
+      const cfg = el('button', { type: 'button', class: 'ghost' }, 'Abrir configurações da IA');
+      cfg.onclick = openConfig;
+      this.adEl.replaceChildren(el('div', { class: 'err-box' },
+        el('strong', {}, 'O anúncio não foi gerado'), el('span', {}, this.adError), el('div', { class: 'row' }, retry, cfg)));
+      if (/Chave da API inválida|Cole sua chave|não tem permissão/i.test(this.adError)) openConfig();
     } finally {
       this.regenBtn.disabled = false;
     }
@@ -579,9 +666,10 @@ class Job {
     body.replaceChildren();
     const t = ad.titulo || '';
     const count = el('span', { class: 'count' + (t.length > 60 ? ' bad' : '') }, ` ${t.length}/60 caracteres`);
-    body.append(el('p', { class: 'hint' }, `Produto identificado: ${ad.produto_identificado || '-'}`));
-    if (ad.categoria_sugerida) body.append(el('p', { class: 'hint' }, `Categoria sugerida: ${ad.categoria_sugerida}`));
-    if (ad.fundo?.descricao) body.append(el('p', { class: 'hint' }, `Veículo das fotos 4 e 5: ${ad.fundo.descricao}`));
+    body.append(el('div', { class: 'ad-meta' },
+      el('span', {}, `Produto: ${ad.produto_identificado || '-'}`),
+      ad.categoria_sugerida ? el('span', {}, `Categoria: ${ad.categoria_sugerida}`) : null,
+      ad.fundo?.descricao ? el('span', {}, `Veículo: ${ad.fundo.descricao}`) : null));
     body.append(field('Título', el('div', {}, el('div', { class: 'box title' }, t), count), t));
     (ad.titulos_alternativos || []).forEach((alt, i) =>
       body.append(field(`Título alternativo ${i + 1}`, el('div', { class: 'box' }, `${alt}  (${alt.length}/60)`), alt)));
@@ -669,7 +757,9 @@ async function downloadZip() {
 }
 
 loadConfig();
+keyState();
 $('saveConfig').onclick = saveConfig;
+$('openConfig').onclick = () => ($('config').open ? ($('config').open = false) : openConfig());
 $('file').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
 $('dlZip').onclick = downloadZip;
 for (const [id, key] of Object.entries(CHECKS)) {

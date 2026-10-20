@@ -1,6 +1,7 @@
 // Geração do anúncio com o Google Gemini (camada gratuita da API).
 const API = 'https://generativelanguage.googleapis.com/v1beta/models/';
-const FALLBACK_MODEL = 'gemini-2.5-flash-lite';
+// modelos "lite" têm cota grátis bem maior (centenas por dia) que os Flash (poucas dezenas)
+const FALLBACK_MODELS = ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite'];
 
 function hoje() {
   return new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -97,10 +98,12 @@ export async function generateAd(imageBlob, { key, model, useSearch, extra, onSt
   const attempts = [];
   if (useSearch) attempts.push({ model, search: true });
   attempts.push({ model, search: false });
-  if (model !== FALLBACK_MODEL) attempts.push({ model: FALLBACK_MODEL, search: false });
+  for (const m of FALLBACK_MODELS) if (m !== model) attempts.push({ model: m, search: false });
 
   let lastErr;
+  const dead = new Set();     // modelos sem cota ou inexistentes: pula as outras tentativas com eles
   for (const a of attempts) {
+    if (dead.has(a.model)) continue;
     onStatus(a.search
       ? 'Identificando o produto e pesquisando os anúncios que mais vendem...'
       : `Escrevendo o anúncio (${a.model})...`);
@@ -129,9 +132,11 @@ export async function generateAd(imageBlob, { key, model, useSearch, extra, onSt
       lastErr = e;
       if (e.status === 400 && /API key/i.test(e.message)) throw new Error('Chave da API inválida. Confira em "Configurações da IA".');
       if (e.status === 403) throw new Error('A chave não tem permissão para usar a API do Gemini. Gere outra em aistudio.google.com/apikey.');
+      if (e.status === 429 || e.status === 404) dead.add(a.model);
     }
   }
-  if (lastErr?.status === 429) throw new Error('A cota grátis do dia acabou. Ela renova automaticamente; tente mais tarde ou troque o modelo nas configurações.');
+  if (lastErr?.status === 429) throw new Error('A cota grátis do Gemini acabou por hoje (o plano grátis permite poucas dezenas de anúncios por dia). Ela renova sozinha; tente mais tarde ou use outra chave.');
+  if (lastErr instanceof SyntaxError) throw new Error('A IA respondeu num formato inválido. Clique em "Gerar de novo".');
   throw lastErr || new Error('Falha ao gerar o anúncio.');
 }
 
@@ -198,7 +203,8 @@ export async function pickBackdrops(blobs, productBlob, { key, model, vehicle, p
   parts.push({ text: `Escolha as fotos que servem de fundo para o anúncio desta peça: devem mostrar o veículo compatível (mesmo modelo e geração), inteiro, do lado de fora, sem cortes, de preferência no ângulo em que a peça aparece (peça traseira: traseira ou 3/4 traseira; dianteira: frente ou 3/4 frente). O veículo deve ser o assunto principal e ocupar a maior parte da foto (pelo menos metade da largura), com fundo limpo. Descarte fotos de outro modelo, interior, detalhes, veículo cortado, veículo pequeno ou distante, fotos com fios, postes, árvores, placas, pessoas ou outros veículos na frente ou em volta.
 Para cada foto aprovada, dê a caixa onde a peça fica nesse veículo, no formato [ymin, xmin, ymax, xmax] de 0 a 1000; use null se a posição não estiver visível.
 Responda SOMENTE com JSON: {"aprovadas": [{"foto": 0, "caixa": [ymin, xmin, ymax, xmax]}]} com a melhor primeiro.` });
-  const models = [model, 'gemini-2.5-flash-lite'].filter((m, i, a) => m && a.indexOf(m) === i);
+  // usa os modelos lite primeiro para não gastar a cota do anúncio
+  const models = [...FALLBACK_MODELS, model].filter((m, i, a) => m && a.indexOf(m) === i);
   for (const m of models) {
     try {
       const data = await call(m, key, {
