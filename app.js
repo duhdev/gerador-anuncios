@@ -4,7 +4,7 @@ import {
 } from './imagem.js';
 import { generateAd, generateBackdrop, searchBackdrops, fetchImage, pickBackdrops } from './ia.js';
 import { makeZip } from './zip.js';
-import { W, H, buildScenes, makeRenderer, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden, personPrompt } from './clip.js';
+import { W, H, buildScenes, makeRenderer, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden } from './clip.js';
 import { estimateDepth, makeOrbit } from './tresd.js';
 import { speak, sentences } from './voz.js';
 import { recordPresenter, presenterFrames } from './apresentador.js';
@@ -195,7 +195,6 @@ class Job {
     await this.runAd();
     await this.nextBackdrop();
     this.fillCaptions();
-    if (this.urls.branco) this.personPhotoLink.href = this.urls.branco;
     this.clipBtn.disabled = this.previewBtn.disabled = false;
     this.status(this.ad ? 'Pronto! Confira os campos marcados com [CONFIRMAR] antes de publicar.' : this.statusEl.textContent,
       !this.ad);
@@ -311,26 +310,7 @@ class Job {
     this.angleEl.onchange = () => this.addAngles(this.angleEl.files);
     this.angleInfo = el('span', { class: 'hint' });
     this.angles = [];
-    this.people = [];
     this.presenter = null;
-    this.personEl = el('input', { type: 'file', accept: 'image/*', multiple: '' });
-    this.personEl.onchange = () => this.addPeople(this.personEl.files);
-    this.personInfo = el('span', { class: 'hint' });
-    const promptBtn = el('button', { type: 'button', class: 'ghost' }, 'Copiar pedido');
-    promptBtn.onclick = async () => {
-      const text = personPrompt(this.ad, $('extraInfo').value.trim());
-      try { await navigator.clipboard.writeText(text); promptBtn.textContent = 'Copiado!'; } catch { window.prompt('Copie o pedido:', text); }
-      setTimeout(() => { promptBtn.textContent = 'Copiar pedido'; }, 2000);
-    };
-    this.personPhotoLink = el('a', { class: 'btn ghost-link', download: `${this.base}-referencia.jpg` }, 'Baixar foto para anexar');
-    this.personBox = el('details', { class: 'person' },
-      el('summary', {}, 'Pessoa segurando a peça (sem você aparecer, grátis)'),
-      el('ol', { class: 'steps' },
-        el('li', {}, this.personPhotoLink, ' e ', promptBtn, '.'),
-        el('li', {}, 'Abra o ', el('a', { href: 'https://aistudio.google.com/prompts/new_chat?model=gemini-2.5-flash-image', target: '_blank', rel: 'noopener' }, 'Google AI Studio'),
-          ' (grátis, entre com sua conta Google), escolha o modelo de imagem "Nano Banana", anexe a foto, cole o pedido e envie.'),
-        el('li', {}, 'Baixe as fotos que ficarem boas (confira se a peça ficou igual à sua) e envie aqui:', this.personEl, this.personInfo)),
-      el('p', { class: 'hint' }, 'As fotos da pessoa entram no vídeo com movimento de câmera na mão, entre as cenas da peça, com a narração por cima. A pessoa não fala na tela; a voz narra, no estilo dos vídeos de demonstração.'));
     this.camBtn = el('button', { type: 'button', class: 'ghost' }, 'Gravar apresentador (câmera)');
     this.camBtn.onclick = () => this.recordCam();
     this.camInfo = el('span', { class: 'hint' });
@@ -347,7 +327,6 @@ class Job {
         el('label', {}, 'Roteiro falado (a IA escreve; pode editar)', this.scriptEl),
         el('label', {}, 'Legendas das cenas (usadas quando não há narração)', this.capEl), this.capWarn,
         el('label', {}, 'Fotos da mesma peça em outros ângulos (opcional)', this.angleEl), this.angleInfo,
-        this.personBox,
         this.voiceRow, this.orbitRow, this.musicRow,
         el('div', { class: 'clip-row' },
           el('label', {}, 'Duração', this.durEl),
@@ -401,18 +380,6 @@ class Job {
       }
     }
     this.angleInfo.textContent = this.angles.length ? `${this.angles.length} foto(s) de outros ângulos no vídeo.` : 'Não consegui usar essas fotos.';
-  }
-
-  async addPeople(files) {
-    const list = [...files].filter((f) => f.type.startsWith('image/'));
-    this.personEl.value = '';
-    for (const f of list) {
-      try { this.people.push(await createImageBitmap(f)); } catch (e) { console.warn('Foto da pessoa inválida', e); }
-    }
-    this.personInfo.replaceChildren(this.people.length ? `${this.people.length} foto(s) da pessoa no vídeo. ` : 'Não consegui abrir essas fotos.',
-      this.people.length ? Object.assign(el('button', { type: 'button', class: 'ghost' }, 'Remover'), {
-        onclick: () => { this.people = []; this.personInfo.textContent = ''; },
-      }) : '');
   }
 
   async recordCam() {
@@ -473,7 +440,7 @@ class Job {
       }
     }
 
-    const scenes = buildScenes({ layer: this.layer, orbit, angles, people: this.people, photos, captions: this.captions() });
+    const scenes = buildScenes({ layer: this.layer, orbit, angles, photos, captions: this.captions() });
     const overlay = {};
     const frames = presenter ? presenterFrames(presenter) : null;
     const prepare = frames ? async (t) => { overlay.presenter = await frames.at(t); } : null;

@@ -105,63 +105,23 @@ function sceneCover(img, dir = 1) {
 }
 
 // layer/orbit: produto principal; angles: [{ layer, orbit }] fotos de outros ângulos
-// foto de uma pessoa segurando a peça, preenchendo a tela, com movimento de
-// câmera na mão (balanço leve e aproximação), como um vídeo gravado no celular
-function scenePerson(img, seed = 0) {
-  return (ctx, t, dur) => {
-    const p = ease(t / dur);
-    const s = Math.max(W / img.width, H / img.height) * lerp(1.06, 1.16, p);
-    const w = img.width * s, h = img.height * s;
-    const a = t * 1.1 + seed * 2.3;
-    const dx = Math.sin(a) * 9 + Math.sin(a * 2.7) * 4;
-    const dy = Math.cos(a * 0.8) * 7 + Math.sin(a * 3.1) * 3;
-    ctx.save();
-    ctx.translate(W / 2 + dx, H / 2 + dy);
-    ctx.rotate(Math.sin(a * 0.6) * 0.006);
-    ctx.drawImage(img, -w / 2, -h / 2 + lerp(20, -20, p), w, h);
-    ctx.restore();
-  };
-}
-
-// layer/orbit: produto principal; angles: [{ layer, orbit }] fotos de outros ângulos;
-// people: fotos de uma pessoa segurando a peça (geradas no Google AI Studio)
-export function buildScenes({ layer, orbit, angles = [], people = [], photos, captions }) {
+export function buildScenes({ layer, orbit, angles = [], photos, captions }) {
   const list = [];
   const cap = [...captions];
   const last = cap.length > 1 ? cap.pop() : '';
   const add = (draw) => list.push({ draw, caption: cap.shift() || '' });
-  const person = [...people];
-  const addPerson = () => { const img = person.shift(); if (img) add(scenePerson(img, list.length)); };
-  addPerson();                     // abre com a pessoa mostrando a peça
   if (layer) add(sceneOrbit(layer, orbit, 0));
-  addPerson();
   if (photos.frente) add(sceneCover(photos.frente, 1));
   angles.forEach((a, i) => add(i % 2 ? sceneOrbit(a.layer, a.orbit, Math.PI / 2) : sceneDetail(a.layer, a.orbit)));
-  addPerson();
   if (layer) add(sceneDetail(layer, orbit));
   if (photos.lado) add(sceneCover(photos.lado, -1));
-  addPerson();
   if (photos.par) add(sceneSquare(photos.par, true));
-  while (person.length) addPerson();
   // legendas que sobraram ganham cenas extras
   const extra = [layer && sceneOrbit(layer, orbit, Math.PI / 2), photos.sombra && sceneSquare(photos.sombra, false)].filter(Boolean);
   for (let i = 0; cap.length && i < extra.length; i++) add(extra[i]);
   const outro = photos.sombra ? sceneSquare(photos.sombra, false) : layer ? sceneOrbit(layer, orbit, Math.PI / 2) : null;
   if (outro) list.push({ draw: outro, caption: last });
   return list;
-}
-
-// Pedido para o Google AI Studio (grátis no site) gerar as fotos da pessoa.
-export function personPrompt(ad, extra = '') {
-  const prod = ad?.produto_identificado || extra || 'o produto da foto';
-  const onde = ad?.fundo?.descricao ? ` ao lado de um ${ad.fundo.descricao}` : '';
-  return `Use a foto anexada como referência EXATA do produto: ${prod}${extra && ad ? ` (${extra})` : ''}.
-Crie 4 fotos realistas, verticais (formato 9:16), como se fossem tiradas com um celular moderno, de uma pessoa brasileira comum segurando e mostrando este produto com as mãos${onde}.
-1) A pessoa segurando a peça na altura do peito, olhando para a peça, rosto parcialmente fora do quadro.
-2) Close das mãos girando a peça para mostrar a lateral.
-3) A pessoa aproximando a peça do local de instalação${onde ? ' no veículo' : ''}.
-4) Close das mãos com a peça, fundo de oficina ou garagem bem iluminada e desfocado.
-Regras: o produto deve ficar idêntico ao da foto (mesmo formato, cores, lentes, encaixes e proporção), sem mudar nenhum detalhe. Mãos naturais com 5 dedos. Luz natural, aparência de foto real, nada de aparência de desenho ou 3D. Sem texto, sem logotipos, sem marca d'água, sem preço.`;
 }
 
 // ---------- legenda ----------
