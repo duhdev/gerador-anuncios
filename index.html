@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gerador de Anúncios</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- online (GitHub Pages) liga o isolamento de origem para a IA usar vários núcleos -->
+  <script src="coi-serviceworker.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Gerador de Anúncios</h1>
+    <p>Coloque a foto do produto. O app deixa a foto pronta para o Mercado Livre e escreve o anúncio com IA.</p>
+  </header>
+
+  <main>
+    <details id="config" class="card">
+      <summary>Configurações da IA</summary>
+      <label>Chave da API do Google Gemini (grátis)
+        <input id="apiKey" type="password" placeholder="Cole aqui sua chave AIza..." autocomplete="off">
+      </label>
+      <p class="hint">Crie a chave em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Ela fica salva só neste navegador.</p>
+      <label>Modelo
+        <input id="model" list="models" value="gemini-2.5-flash">
+        <datalist id="models">
+          <option value="gemini-2.5-flash">
+          <option value="gemini-2.5-flash-lite">
+          <option value="gemini-flash-latest">
+          <option value="gemini-flash-lite-latest">
+        </datalist>
+      </label>
+      <label class="check"><input id="useSearch" type="checkbox" checked> Pesquisar no Google o que está vendendo hoje no Mercado Livre</label>
+      <button id="saveConfig" type="button">Salvar</button>
+      <span id="configMsg" class="hint"></span>
+    </details>
+
+    <section class="card">
+      <label id="drop" class="drop">
+        <input id="file" type="file" accept="image/*" multiple hidden>
+        <strong>Clique ou arraste as fotos dos produtos aqui</strong>
+        <span>JPG, PNG ou WEBP · pode mandar várias de uma vez (um anúncio por foto)</span>
+      </label>
+      <div class="options">
+        <label class="check"><input id="removeBg" type="checkbox" checked> Remover o fundo automaticamente</label>
+        <label class="check"><input id="aiUpscale" type="checkbox" checked> Reconstruir detalhes com IA (fotos pequenas ou borradas)</label>
+        <label class="check"><input id="maxSharp" type="checkbox"> Nitidez máxima (para fotos muito borradas)</label>
+        <label class="check"><input id="colorFix" type="checkbox" checked> Realçar cores e contraste</label>
+        <label class="check"><input id="mirrorPair" type="checkbox"> Na foto do par, espelhar a segunda peça (lado esquerdo e direito)</label>
+        <label class="extra">Informações extras (opcional): marca, modelo, medidas, veículo compatível...
+          <input id="extraInfo" placeholder="Ex.: Lanterna traseira Renault Master 2014 a 2022, lado direito">
+        </label>
+        <label class="extra">Foto do veículo ou ambiente para o fundo (opcional; sem ela o app busca uma foto real do veículo)
+          <input id="bgFile" type="file" accept="image/*">
+        </label>
+        <label class="extra">Veículo ao fundo (fotos 4 e 5): <b id="bgOpacityVal">100%</b> visível
+          <input id="bgOpacity" type="range" min="30" max="100" value="100">
+        </label>
+      </div>
+      <p id="status" class="status" hidden></p>
+    </section>
+
+    <div id="batchBar" class="batch-bar" hidden>
+      <span id="batchInfo"></span>
+      <button id="dlZip" type="button">Baixar tudo (ZIP)</button>
+    </div>
+    <div id="jobs"></div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
