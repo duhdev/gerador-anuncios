@@ -195,7 +195,7 @@ export async function pickBackdrops(blobs, productBlob, { key, model, vehicle, p
     parts.push({ text: `Foto ${i}:` });
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await blobToBase64(await smallJpeg(blobs[i], 512)) } });
   }
-  parts.push({ text: `Escolha as fotos que servem de fundo para o anúncio desta peça: devem mostrar o veículo compatível (mesmo modelo e geração), inteiro, do lado de fora, sem cortes, de preferência no ângulo em que a peça aparece (peça traseira: traseira ou 3/4 traseira; dianteira: frente ou 3/4 frente). Descarte fotos de outro modelo, interior, detalhes, veículo cortado ou com muita gente/objetos na frente.
+  parts.push({ text: `Escolha as fotos que servem de fundo para o anúncio desta peça: devem mostrar o veículo compatível (mesmo modelo e geração), inteiro, do lado de fora, sem cortes, de preferência no ângulo em que a peça aparece (peça traseira: traseira ou 3/4 traseira; dianteira: frente ou 3/4 frente). O veículo deve ser o assunto principal e ocupar a maior parte da foto (pelo menos metade da largura), com fundo limpo. Descarte fotos de outro modelo, interior, detalhes, veículo cortado, veículo pequeno ou distante, fotos com fios, postes, árvores, placas, pessoas ou outros veículos na frente ou em volta.
 Para cada foto aprovada, dê a caixa onde a peça fica nesse veículo, no formato [ymin, xmin, ymax, xmax] de 0 a 1000; use null se a posição não estiver visível.
 Responda SOMENTE com JSON: {"aprovadas": [{"foto": 0, "caixa": [ymin, xmin, ymax, xmax]}]} com a melhor primeiro.` });
   const models = [model, 'gemini-2.5-flash-lite'].filter((m, i, a) => m && a.indexOf(m) === i);

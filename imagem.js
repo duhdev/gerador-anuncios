@@ -483,6 +483,81 @@ export async function prepareProduct(file, { removeBg = true, aiUpscale = true, 
 }
 
 /** Prepara a foto de fundo (veículo/ambiente): remove o fundo e recorta. */
+// Mantém só o objeto principal do recorte (o veículo) e apaga sobras soltas
+// como fios, postes e placas. Recusa a foto se o veículo for pequeno demais
+// ou se o recorte não tiver formato de veículo.
+function keepMainObject(c) {
+  const W0 = c.width, H0 = c.height;
+  const k = Math.min(1, 400 / Math.max(W0, H0));
+  const w = Math.max(1, Math.round(W0 * k)), h = Math.max(1, Math.round(H0 * k));
+  const small = canvas(w, h);
+  const sctx = small.getContext('2d', { willReadFrequently: true });
+  sctx.drawImage(c, 0, 0, w, h);
+  const a = sctx.getImageData(0, 0, w, h).data;
+  const label = new Int32Array(w * h).fill(-1);
+  const comps = [];
+  const stack = [];
+  for (let i = 0; i < w * h; i++) {
+    if (label[i] !== -1 || a[i * 4 + 3] < 128) continue;
+    const id = comps.length;
+    const comp = { area: 0, x0: w, y0: h, x1: 0, y1: 0 };
+    label[i] = id;
+    stack.push(i);
+    while (stack.length) {
+      const j = stack.pop();
+      const x = j % w, y = (j - x) / w;
+      comp.area++;
+      if (x < comp.x0) comp.x0 = x;
+      if (x > comp.x1) comp.x1 = x;
+      if (y < comp.y0) comp.y0 = y;
+      if (y > comp.y1) comp.y1 = y;
+      for (const n of [j - 1, j + 1, j - w, j + w]) {
+        if (n < 0 || n >= w * h || label[n] !== -1 || a[n * 4 + 3] < 128) continue;
+        if ((n === j - 1 && x === 0) || (n === j + 1 && x === w - 1)) continue;
+        label[n] = id;
+        stack.push(n);
+      }
+    }
+    comps.push(comp);
+  }
+  if (!comps.length) throw new Error('nenhum veículo no recorte');
+  const main = comps.reduce((m, x) => (x.area > m.area ? x : m));
+  const bw = main.x1 - main.x0 + 1, bh = main.y1 - main.y0 + 1;
+  if (bw < w * 0.3 && bh < h * 0.3) throw new Error('veículo pequeno demais na foto');
+  if (main.area < w * h * 0.06) throw new Error('veículo pequeno demais na foto');
+  if (main.area < bw * bh * 0.35) throw new Error('recorte sem formato de veículo');
+  // pedaços grandes perto do veículo (retrovisor, estepe) ficam; o resto sai
+  const keep = new Uint8Array(comps.length);
+  comps.forEach((x, id) => {
+    const near = x.x1 >= main.x0 - 4 && x.x0 <= main.x1 + 4 && x.y1 >= main.y0 - 4 && x.y0 <= main.y1 + 4;
+    keep[id] = x === main || (near && x.area > main.area * 0.02) ? 1 : 0;
+  });
+  let on = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) on[i] = label[i] >= 0 ? keep[label[i]] : 0;
+  // engorda a máscara 2 pixels para não comer a borda do veículo
+  for (let it = 0; it < 2; it++) {
+    const nx = on.slice();
+    for (let i = 0; i < w * h; i++) {
+      if (on[i]) continue;
+      const x = i % w;
+      if ((x > 0 && on[i - 1]) || (x < w - 1 && on[i + 1]) || (i >= w && on[i - w]) || (i < w * h - w && on[i + w])) nx[i] = 1;
+    }
+    on = nx;
+  }
+  const mask = sctx.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) mask.data[i * 4 + 3] = on[i] ? 255 : 0;
+  sctx.putImageData(mask, 0, 0);
+  const big = canvas(W0, H0);
+  const bctx = big.getContext('2d');
+  bctx.filter = `blur(${Math.max(1, Math.round(1 / k))}px)`;
+  bctx.drawImage(small, -2, -2, W0 + 4, H0 + 4);
+  // apaga o que ficou fora da máscara, preservando a borda original do veículo
+  const cctx = c.getContext('2d');
+  cctx.globalCompositeOperation = 'destination-in';
+  cctx.drawImage(big, 0, 0);
+  cctx.globalCompositeOperation = 'source-over';
+}
+
 export async function prepareBackdrop(blob, onStatus = () => {}) {
   let src = blob;
   try {
@@ -493,6 +568,7 @@ export async function prepareBackdrop(blob, onStatus = () => {}) {
   const bmp = await createImageBitmap(src);
   const c = canvas(bmp.width, bmp.height);
   c.getContext('2d').drawImage(bmp, 0, 0);
+  keepMainObject(c);
   const b = alphaBounds(c);
   cleanEdges(c, b);
   const out = canvas(b.w, b.h);
