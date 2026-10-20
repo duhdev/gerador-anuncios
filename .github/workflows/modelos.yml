@@ -1,0 +1,30 @@
+name: baixar modelos
+on:
+  push:
+    branches: [modelos]
+permissions:
+  contents: write
+jobs:
+  baixar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: baixar
+        run: |
+          set -e
+          mkdir -p m
+          H=https://huggingface.co
+          curl -fL -o m/pt_BR-faber-medium.onnx "$H/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx"
+          curl -fL -o m/pt_BR-faber-medium.onnx.json "$H/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json"
+          curl -fL -o m/MODEL_CARD_faber "$H/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/MODEL_CARD" || true
+          curl -fL -o m/depth_fp16.onnx "$H/onnx-community/depth-anything-v2-small/resolve/main/onnx/model_fp16.onnx"
+          curl -fL -o m/depth_q.onnx "$H/onnx-community/depth-anything-v2-small/resolve/main/onnx/model_quantized.onnx"
+          curl -fL -o m/depth_config.json "$H/onnx-community/depth-anything-v2-small/resolve/main/preprocessor_config.json"
+          ls -la m
+      - name: salvar
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@users.noreply.github.com
+          git add m
+          git commit -m "modelos baixados"
+          git push
