@@ -15,7 +15,7 @@ Mac/Linux: rode `python3 servidor.py` dentro da pasta.
 **Fotos (5 imagens, todas 1200x1200 em JPG)**
 1. Fundo branco (foto principal).
 2. Fundo branco com sombra.
-3. Par do produto, duas unidades lado a lado (marque "espelhar" para peças de lado esquerdo e direito).
+3. Par do produto: lado direito e lado esquerdo (a segunda peça é o espelho da primeira), lado a lado e simétricos. Desmarque a opção se a peça não tiver lado.
 4. Veículo compatível inteiro ao fundo e a peça grande na frente, em destaque.
 5. Veículo à esquerda com um círculo marcando onde a peça vai, ligado à peça à direita.
 

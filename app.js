@@ -30,13 +30,13 @@ let userBackdrop = null;   // foto de fundo enviada (preparada uma vez)
 
 // ---------- configurações ----------
 
-const CHECKS = { removeBg: 'remove_bg', aiUpscale: 'ai_upscale', maxSharp: 'max_sharp', colorFix: 'color_fix', mirrorPair: 'mirror_pair' };
+const CHECKS = { removeBg: 'remove_bg', aiUpscale: 'ai_upscale', maxSharp: 'max_sharp', colorFix: 'color_fix', mirrorPair: 'mirror_pair_v2' };
 
 function loadConfig() {
   $('apiKey').value = store.get('gemini_key', '');
   $('model').value = store.get('gemini_model', 'gemini-2.5-flash');
   $('useSearch').checked = store.get('use_search', '1') === '1';
-  for (const [id, key] of Object.entries(CHECKS)) $(id).checked = store.get(key, id === 'mirrorPair' || id === 'maxSharp' ? '0' : '1') === '1';
+  for (const [id, key] of Object.entries(CHECKS)) $(id).checked = store.get(key, id === 'maxSharp' ? '0' : '1') === '1';
   $('bgOpacity').value = store.get('bg_opacity_v2', '100');
   $('bgOpacityVal').textContent = `${$('bgOpacity').value}%`;
   if (!$('apiKey').value) $('config').open = true;

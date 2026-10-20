@@ -632,7 +632,10 @@ export function renderShadow(layer) {
 }
 
 /** 3. Par do produto (duas unidades lado a lado; a segunda pode ser espelhada). */
-export function renderPair(layer, mirror = false) {
+// Par direito + esquerdo: a segunda peça é o espelho da primeira, e as duas
+// ficam simétricas em relação ao centro, como no veículo (cada uma de um lado).
+// mirror=false: duas peças iguais (produtos que não têm lado).
+export function renderPair(layer, mirror = true) {
   const { c, ctx } = blank();
   let second = layer;
   if (mirror) {
@@ -642,21 +645,33 @@ export function renderPair(layer, mirror = false) {
     sctx.scale(-1, 1);
     sctx.drawImage(layer, 0, 0);
   }
+  const tilted = (img, x, y, w, h, deg) => {
+    // gira em volta do centro e desenha com sombra
+    const t = canvas(Math.round(w * 1.3), Math.round(h * 1.15));
+    const tctx = t.getContext('2d');
+    tctx.translate(t.width / 2, t.height / 2);
+    tctx.rotate(deg * Math.PI / 180);
+    tctx.drawImage(img, -w / 2, -h / 2, w, h);
+    const b = alphaBounds(t);
+    const crop = canvas(b.w, b.h);
+    crop.getContext('2d').drawImage(t, -b.x, -b.y);
+    drawWithShadow(ctx, crop, x + w / 2 - t.width / 2 + b.x, y + h / 2 - t.height / 2 + b.y, b.w, b.h, 0.75);
+  };
   const wide = layer.width > layer.height * 1.25;
   if (wide) {
-    // produtos largos: um em cima do outro, com deslocamento
-    const { w, h } = fit(layer.width, layer.height, 940, 500);
-    const dx = Math.round(w * 0.12);
-    const x = Math.round((SIZE - w - dx) / 2), y = Math.round((SIZE - (h * 2 - h * 0.08)) / 2);
-    drawWithShadow(ctx, layer, x, y, w, h, 0.8);
-    drawWithShadow(ctx, second, x + dx, Math.round(y + h * 0.92), w, h, 0.8);
+    // peças largas: uma em cima da outra, a de baixo espelhada, com leve deslocamento
+    const { w, h } = fit(layer.width, layer.height, 900, 470);
+    const gap = Math.round(h * 0.1);
+    const y = Math.round((SIZE - (h * 2 + gap)) / 2) - 10;
+    tilted(second, Math.round((SIZE - w) / 2) - 30, y, w, h, 0);
+    tilted(layer, Math.round((SIZE - w) / 2) + 30, y + h + gap, w, h, 0);
   } else {
-    const { w, h } = fit(layer.width, layer.height, 560, 960);
-    const overlap = Math.round(w * 0.06), dy = Math.round(h * 0.05);
-    const total = w * 2 - overlap;
-    const x = Math.round((SIZE - total) / 2), y = Math.round((SIZE - h - dy) / 2) - 10;
-    drawWithShadow(ctx, layer, x, y, w, h, 0.8);
-    drawWithShadow(ctx, second, x + w - overlap, y + dy, w, h, 0.8);
+    // lado a lado, simétricas: a espelhada à esquerda, a original à direita
+    const { w, h } = fit(layer.width, layer.height, 460, 880);
+    const gap = Math.round(Math.min(160, Math.max(70, w * 0.4)));
+    const x = Math.round((SIZE - (w * 2 + gap)) / 2), y = Math.round((SIZE - h) / 2) - 15;
+    tilted(second, x, y, w, h, 0);
+    tilted(layer, x + w + gap, y, w, h, 0);
   }
   return c;
 }
