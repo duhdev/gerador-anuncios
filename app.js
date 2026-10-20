@@ -4,6 +4,7 @@ import {
 } from './imagem.js';
 import { generateAd, generateBackdrop, searchBackdrops, fetchImage, pickBackdrops } from './ia.js';
 import { makeZip } from './zip.js';
+import { W, H, buildScenes, makeRenderer, makeMusic, recordClip, defaultCaptions, forbidden } from './clip.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -119,6 +120,7 @@ class Job {
         el('span', { class: 'job-actions' }, this.bgBtn, this.regenBtn)),
       this.statusEl, this.grid,
       el('h3', { class: 'sub' }, 'Conferência para o Mercado Livre'), this.checkEl,
+      el('h3', { class: 'sub' }, 'Vídeo para o Mercado Livre Clips'), this.buildClipUi(),
       el('h3', { class: 'sub' }, 'Anúncio'), this.adEl);
     $('jobs').append(this.root);
   }
@@ -189,6 +191,8 @@ class Job {
     SCENES.forEach((id) => this.slotMessage(id, 'Aguardando a IA identificar o veículo...'));
     await this.runAd();
     await this.nextBackdrop();
+    this.fillCaptions();
+    this.clipBtn.disabled = this.previewBtn.disabled = false;
     this.status(this.ad ? 'Pronto! Confira os campos marcados com [CONFIRMAR] antes de publicar.' : this.statusEl.textContent,
       !this.ad);
     updateBatchBar();
@@ -273,6 +277,125 @@ class Job {
         : 'Escreva o veículo em "Informações extras" ou envie uma foto dele no campo "Foto do veículo ou ambiente".'));
   }
 
+  // ---------- vídeo para Clips ----------
+
+  buildClipUi() {
+    this.capEl = el('textarea', { rows: 6, placeholder: 'Uma legenda por linha (aparecem uma por cena)' });
+    this.capEl.addEventListener('input', () => { this.capEdited = true; this.checkCaptions(); });
+    this.capWarn = el('p', { class: 'hint' });
+    this.durEl = el('select', {}, [15, 20, 30, 45, 60].map((d) => el('option', { value: d }, `${d} segundos`)));
+    this.durEl.value = store.get('clip_dur', '20');
+    this.durEl.onchange = () => store.set('clip_dur', this.durEl.value);
+    this.musicEl = el('input', { type: 'checkbox' });
+    this.musicEl.checked = store.get('clip_music', '1') === '1';
+    this.musicEl.onchange = () => store.set('clip_music', this.musicEl.checked ? '1' : '0');
+    this.colorEl = el('input', { type: 'color', value: store.get('clip_color', '#3483fa') });
+    this.colorEl.onchange = () => store.set('clip_color', this.colorEl.value);
+    this.previewBtn = el('button', { type: 'button', class: 'ghost', disabled: '' }, 'Pré-visualizar');
+    this.clipBtn = el('button', { type: 'button', disabled: '' }, 'Gerar vídeo MP4');
+    this.previewBtn.onclick = () => this.previewClip();
+    this.clipBtn.onclick = () => this.makeClip();
+    this.clipCanvas = el('canvas', { class: 'clip-view', width: W, height: H });
+    this.clipOut = el('div', { class: 'clip-out' });
+    this.clipMsg = el('p', { class: 'hint' }, 'Disponível quando as fotos ficarem prontas.');
+    return el('div', { class: 'clip' },
+      el('div', { class: 'clip-form' },
+        el('label', {}, 'Legendas do vídeo (a IA escreve; pode editar)', this.capEl), this.capWarn,
+        el('div', { class: 'clip-row' },
+          el('label', {}, 'Duração', this.durEl),
+          el('label', {}, 'Cor do destaque', this.colorEl)),
+        el('label', { class: 'check' }, this.musicEl, ' Música de fundo (criada pelo app, livre de direitos autorais)'),
+        el('div', { class: 'job-actions', style: 'justify-content:flex-start' }, this.previewBtn, this.clipBtn),
+        this.clipMsg,
+        el('p', { class: 'hint' }, 'Formato dos Clips: vertical 1080x1920 (9:16), entre 10 e 60 segundos, MP4. Sem preço, promoção, frete ou contato no vídeo. O Mercado Livre dá preferência a vídeos mostrando o produto em uso, então este vídeo animado pode ser recusado na moderação; se isso acontecer, grave o produto em uso no celular e use estas legendas.')),
+      el('div', { class: 'clip-media' }, this.clipCanvas, this.clipOut));
+  }
+
+  fillCaptions() {
+    if (this.capEdited) return;
+    this.capEl.value = defaultCaptions(this.ad).join('\n');
+    this.checkCaptions();
+  }
+
+  captions() {
+    return this.capEl.value.split('\n').map((s) => s.trim()).filter(Boolean);
+  }
+
+  checkCaptions() {
+    const bad = this.captions().map(forbidden).filter(Boolean);
+    this.capWarn.textContent = bad.length ? `Atenção: o Mercado Livre não aceita "${bad[0]}" nos Clips (preço, promoção, frete ou contato). Tire das legendas.` : '';
+    this.capWarn.classList.toggle('count', !!bad.length);
+    this.capWarn.classList.toggle('bad', !!bad.length);
+  }
+
+  async clipRenderer() {
+    const load = async (id) => (this.blobs[id] ? createImageBitmap(this.blobs[id]) : null);
+    const photos = { sombra: await load('sombra'), par: await load('par'), frente: await load('fundo-frente'), lado: await load('fundo-lado') };
+    const scenes = buildScenes({ layer: this.layer, photos, captions: this.captions() });
+    const duration = Number(this.durEl.value);
+    return { render: makeRenderer(scenes, duration, this.colorEl.value), duration };
+  }
+
+  async previewClip() {
+    if (!this.layer) return;
+    this.stopPreview?.();
+    const { render, duration } = await this.clipRenderer();
+    const ctx = this.clipCanvas.getContext('2d');
+    this.clipCanvas.hidden = false;
+    let ac = null;
+    if (this.musicEl.checked) {
+      try {
+        const buf = await makeMusic(duration);
+        ac = new AudioContext();
+        const src = ac.createBufferSource();
+        src.buffer = buf;
+        src.connect(ac.destination);
+        src.start();
+      } catch (e) { console.warn('Prévia sem música', e); }
+    }
+    const t0 = performance.now();
+    let stop = false;
+    this.stopPreview = () => { stop = true; ac?.close(); this.stopPreview = null; };
+    const tick = () => {
+      if (stop) return;
+      const t = (performance.now() - t0) / 1000;
+      render(ctx, Math.min(t, duration - 0.001));
+      if (t < duration) requestAnimationFrame(tick); else this.stopPreview?.();
+    };
+    tick();
+  }
+
+  async makeClip() {
+    if (!this.layer) return;
+    this.stopPreview?.();
+    this.clipBtn.disabled = this.previewBtn.disabled = true;
+    try {
+      const { render, duration } = await this.clipRenderer();
+      this.clipMsg.textContent = 'Criando a música...';
+      const music = this.musicEl.checked ? await makeMusic(duration).catch(() => null) : null;
+      const res = await recordClip({
+        render, duration, music,
+        onProgress: (p) => { this.clipMsg.textContent = `Gravando o vídeo... ${Math.round(p * 100)}%`; },
+      });
+      if (this.clipUrl) URL.revokeObjectURL(this.clipUrl);
+      this.clipUrl = URL.createObjectURL(res.blob);
+      this.clipBlob = res.blob;
+      this.clipExt = res.ext;
+      this.clipCanvas.hidden = true;
+      const mb = (res.blob.size / 1048576).toFixed(1);
+      this.clipOut.replaceChildren(
+        el('video', { src: this.clipUrl, controls: '', playsinline: '', class: 'clip-view' }),
+        el('a', { class: 'btn', href: this.clipUrl, download: `${this.base}-clip.${res.ext}` }, `Baixar vídeo (${res.ext.toUpperCase()}, ${mb} MB)`));
+      this.clipMsg.textContent = res.warning || `Vídeo pronto: ${duration} s, 1080x1920, ${res.ext.toUpperCase()}.`;
+      this.clipMsg.classList.toggle('warn', !!res.warning);
+    } catch (e) {
+      console.error(e);
+      this.clipMsg.textContent = 'Erro ao gravar o vídeo: ' + (e.message || e);
+    } finally {
+      this.clipBtn.disabled = this.previewBtn.disabled = false;
+    }
+  }
+
   // ---------- conferência ----------
 
   renderChecks() {
@@ -317,6 +440,7 @@ class Job {
       });
       this.renderAd();
       this.renderChecks();
+      this.fillCaptions();
     } catch (e) {
       console.error(e);
       this.status(e.message || String(e), true);
@@ -411,6 +535,7 @@ async function downloadZip() {
     for (const s of SLOTS) if (j.blobs[s.id]) files.push({ name: `${dir}/${j.fileName(s.id)}`, data: j.blobs[s.id] });
     const txt = j.adText();
     if (txt) files.push({ name: `${dir}/anuncio.txt`, data: txt });
+    if (j.clipBlob) files.push({ name: `${dir}/${j.base}-clip.${j.clipExt}`, data: j.clipBlob });
   }
   if (!files.length) return;
   const zip = await makeZip(files);

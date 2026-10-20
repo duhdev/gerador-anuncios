@@ -37,6 +37,14 @@ Como funciona:
   título (até 60 caracteres), títulos alternativos, descrição em texto puro, ficha técnica, palavras-chave, perguntas frequentes e dicas.
 - Dados que não aparecem na foto ficam marcados como `[CONFIRMAR: ...]`. Preencha o campo "Informações extras" (marca, medidas, voltagem) para um texto mais completo.
 
+**Vídeo para o Mercado Livre Clips**
+- Depois das fotos, cada produto ganha um editor de vídeo vertical 1080x1920 (9:16), em MP4, com 15 a 60 segundos (o Clips aceita de 10 a 60).
+- O vídeo é montado com as 5 fotos: o produto entra na tela, a câmera aproxima nos detalhes, mostra o veículo com a peça em destaque e o par, e termina na foto com sombra.
+- O Gemini escreve as legendas (sem preço, promoção, frete ou contato, que o Clips não aceita). Dá para editar as legendas, a duração e a cor do destaque, e pré-visualizar antes de gravar.
+- A música de fundo é criada pelo próprio app, então não tem problema de direitos autorais.
+- Use o Google Chrome ou o Edge: eles gravam em H.264, o formato que o Mercado Livre aceita. O vídeo entra no "Baixar tudo (ZIP)" quando já foi gerado.
+- O Mercado Livre prefere vídeos mostrando o produto em uso. Um vídeo feito só com fotos pode ser recusado na moderação; nesse caso, grave a peça em uso com o celular e use as mesmas legendas.
+
 ## Custo e limites da IA
 - A chave do Google AI Studio na camada gratuita não cobra nada enquanto você não ativar faturamento no projeto do Google Cloud. Não ative e o custo é zero.
 - A cota gratuita é por dia e o Google muda os números com frequência; os valores atuais aparecem em https://aistudio.google.com (página de limites de uso). Cada foto usa 1 pedido.
