@@ -4,7 +4,7 @@
 import { Muxer, ArrayBufferTarget } from './vendor/mp4-muxer/mp4-muxer.mjs';
 
 export const W = 1080, H = 1920, FPS = 30;
-const FADE = 0.45;           // transição entre cenas (s)
+const FADE = 0.7;           // transição entre cenas (s)
 const RATE = 44100;
 
 const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
@@ -20,39 +20,44 @@ function paintWhite(ctx) {
   ctx.fillRect(0, 0, W, H);
 }
 
-// produto recortado entrando com um "pop" e balançando de leve
-function sceneHero(layer) {
+function contactShadow(ctx, cx, y, w) {
+  ctx.save();
+  ctx.translate(cx, y);
+  ctx.scale(1, 0.12);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.45);
+  g.addColorStop(0, 'rgba(0,0,0,.30)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, w * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// produto girando devagar na frente da câmera (giro 3D com a profundidade da IA)
+// `phase` muda o sentido do giro entre as cenas
+function sceneOrbit(layer, orbit, phase = 0) {
   return (ctx, t, dur) => {
     paintWhite(ctx);
-    const k = Math.min(W * 0.86 / layer.width, H * 0.5 / layer.height);
-    const s = k * lerp(0.82, 1, ease(t / 0.6)) * (1 + 0.04 * (t / dur));
-    const w = layer.width * s, h = layer.height * s;
-    const cx = W / 2, cy = H * 0.44;
-    // sombra de contato
-    ctx.save();
-    ctx.translate(cx, cy + h / 2 + 10);
-    ctx.scale(1, 0.12);
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.45);
-    g.addColorStop(0, 'rgba(0,0,0,.30)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, w * 0.45, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(Math.sin(t * 1.6) * 0.025);
-    ctx.shadowColor = 'rgba(0,0,0,.25)';
-    ctx.shadowBlur = 40;
-    ctx.shadowOffsetY = 18;
-    ctx.drawImage(layer, -w / 2, -h / 2, w, h);
-    ctx.restore();
+    const p = t / dur;
+    const k = Math.min(W * 0.84 / layer.width, H * 0.5 / layer.height) * lerp(0.94, 1.04, ease(p));
+    const w = layer.width * k, h = layer.height * k;
+    const cx = W / 2, cy = H * 0.44 + Math.sin(t * 1.3) * 8;
+    contactShadow(ctx, cx, cy + h / 2 + 10, w);
+    const angle = Math.sin(phase + (p - 0.5) * Math.PI) * (phase ? -1 : 1);
+    if (orbit) orbit(ctx, cx - w / 2, cy - h / 2, w, h, angle, lerp(-0.4, 1.4, p));
+    else {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.sin(t * 1.6) * 0.02);
+      ctx.drawImage(layer, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
   };
 }
 
 // aproximação percorrendo o produto: mostra os detalhes
-function sceneDetail(layer) {
+function sceneDetail(layer, orbit) {
   return (ctx, t, dur) => {
     paintWhite(ctx);
     const p = ease(t / dur);
@@ -60,7 +65,8 @@ function sceneDetail(layer) {
     const w = layer.width * k, h = layer.height * k;
     const x = W / 2 - w / 2 + lerp(w * 0.12, -w * 0.12, p);
     const y = H * 0.42 - h / 2;
-    ctx.drawImage(layer, x, y, w, h);
+    if (orbit) orbit(ctx, x, y, w, h, lerp(0.5, -0.5, p), lerp(1.3, -0.3, p));
+    else ctx.drawImage(layer, x, y, w, h);
   };
 }
 
@@ -98,20 +104,22 @@ function sceneCover(img, dir = 1) {
   };
 }
 
-export function buildScenes({ layer, photos, captions }) {
+// layer/orbit: produto principal; angles: [{ layer, orbit }] fotos de outros ângulos
+export function buildScenes({ layer, orbit, angles = [], photos, captions }) {
   const list = [];
   const cap = [...captions];
   const last = cap.length > 1 ? cap.pop() : '';
   const add = (draw) => list.push({ draw, caption: cap.shift() || '' });
-  if (layer) add(sceneHero(layer));
+  if (layer) add(sceneOrbit(layer, orbit, 0));
   if (photos.frente) add(sceneCover(photos.frente, 1));
-  if (layer) add(sceneDetail(layer));
+  angles.forEach((a, i) => add(i % 2 ? sceneOrbit(a.layer, a.orbit, Math.PI / 2) : sceneDetail(a.layer, a.orbit)));
+  if (layer) add(sceneDetail(layer, orbit));
   if (photos.lado) add(sceneCover(photos.lado, -1));
   if (photos.par) add(sceneSquare(photos.par, true));
-  // legendas que sobraram ganham cenas extras com as fotos já usadas
-  const extra = [photos.sombra && sceneSquare(photos.sombra, false), layer && sceneDetail(layer)].filter(Boolean);
+  // legendas que sobraram ganham cenas extras
+  const extra = [layer && sceneOrbit(layer, orbit, Math.PI / 2), photos.sombra && sceneSquare(photos.sombra, false)].filter(Boolean);
   for (let i = 0; cap.length && i < extra.length; i++) add(extra[i]);
-  const outro = photos.sombra ? sceneSquare(photos.sombra, false) : layer ? sceneHero(layer) : null;
+  const outro = photos.sombra ? sceneSquare(photos.sombra, false) : layer ? sceneOrbit(layer, orbit, Math.PI / 2) : null;
   if (outro) list.push({ draw: outro, caption: last });
   return list;
 }
@@ -132,9 +140,9 @@ function wrap(ctx, text, maxW) {
 
 function drawCaption(ctx, text, t, color) {
   if (!text) return;
-  const a = ease(t / 0.45);
+  const a = ease(t / 0.3);
   let size = 72, lines;
-  for (; size >= 44; size -= 4) {
+  for (; size >= 40; size -= 4) {
     ctx.font = `800 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
     lines = wrap(ctx, text, W - 220);
     if (lines.length <= 3) break;
@@ -158,23 +166,60 @@ function drawCaption(ctx, text, t, color) {
   ctx.restore();
 }
 
-// ---------- quadro ----------
+// apresentador gravado pela câmera, num círculo no alto da tela
+function drawPresenter(ctx, img, time) {
+  const a = ease(time / 0.5);
+  const r = 180 * lerp(0.8, 1, a), cx = W - 60 - 180, cy = 110 + 180;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.shadowColor = 'rgba(0,0,0,.35)';
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+  ctx.restore();
+}
 
-export function makeRenderer(scenes, duration, color = '#3483fa') {
+function zoomed(ctx, s, fn) {
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(s, s);
+  ctx.translate(-W / 2, -H / 2);
+  fn();
+  ctx.restore();
+}
+
+// subtitles: [{ text, start, end }] legendas no tempo da voz (substituem as das cenas)
+// overlay: { presenter } preenchido por prepare(t) antes de cada quadro
+export function makeRenderer(scenes, duration, color = '#3483fa', { subtitles = null, overlay = {} } = {}) {
   const per = duration / scenes.length;
   return (ctx, time) => {
     const i = Math.min(scenes.length - 1, Math.floor(time / per));
     const t = time - i * per;
-    ctx.globalAlpha = 1;
-    // cada cena dura um pouco mais para cobrir a transição
-    scenes[i].draw(ctx, t + (i ? FADE : 0), per + FADE);
-    drawCaption(ctx, scenes[i].caption, t, color);
     const left = per - t;
-    if (i < scenes.length - 1 && left < FADE) {
-      ctx.globalAlpha = 1 - left / FADE;
-      scenes[i + 1].draw(ctx, FADE - left, per + FADE);
+    ctx.globalAlpha = 1;
+    // transição fluida: a cena que sai aproxima enquanto a próxima surge,
+    // com a câmera sempre em movimento (sem cortes secos)
+    const out = i < scenes.length - 1 && left < FADE ? ease(1 - left / FADE) : 0;
+    zoomed(ctx, 1 + 0.08 * out, () => scenes[i].draw(ctx, t + (i ? FADE : 0), per + FADE));
+    if (out) {
+      ctx.globalAlpha = out;
+      zoomed(ctx, lerp(0.94, 1, out), () => scenes[i + 1].draw(ctx, FADE - left, per + FADE));
       ctx.globalAlpha = 1;
     }
+    if (subtitles) {
+      const s = subtitles.find((x) => time >= x.start && time < x.end + 0.15);
+      if (s) drawCaption(ctx, s.text, time - s.start, color);
+    } else {
+      drawCaption(ctx, scenes[i].caption, t, color);
+    }
+    if (overlay.presenter) drawPresenter(ctx, overlay.presenter, time);
     // final some suavemente para o branco
     if (time > duration - 0.4) {
       ctx.fillStyle = `rgba(255,255,255,${(time - duration + 0.4) / 0.4})`;
@@ -264,6 +309,25 @@ export async function makeMusic(duration) {
   return ac.startRendering();
 }
 
+// Junta música, narração e voz do apresentador numa trilha só (estéreo 44,1 kHz).
+// Com fala, a música fica baixinha por baixo.
+export async function makeSoundtrack({ duration, music = true, voice = null, voiceAt = 0.4, presenter = null }) {
+  const speech = voice || presenter;
+  if (!music && !speech) return null;
+  const ac = new OfflineAudioContext(2, Math.ceil(RATE * duration), RATE);
+  const play = (buf, gain, at = 0) => {
+    const s = ac.createBufferSource(), g = ac.createGain();
+    s.buffer = buf;
+    g.gain.value = gain;
+    s.connect(g).connect(ac.destination);
+    s.start(at);
+  };
+  if (music) play(await makeMusic(duration), speech ? 0.22 : 0.8);
+  if (voice) play(voice, 1, voiceAt);
+  if (presenter) play(presenter, 1.1);
+  return ac.startRendering();
+}
+
 // ---------- gravação do MP4 ----------
 
 async function pickVideoCodec() {
@@ -305,9 +369,9 @@ function resample(buf, rate) {
 }
 
 // Grava o vídeo. Devolve { blob, type, ext, warning }.
-export async function recordClip({ render, duration, music, onProgress = () => {} }) {
+export async function recordClip({ render, prepare = null, duration, music, onProgress = () => {} }) {
   const video = await pickVideoCodec();
-  if (!video) return recordRealtime({ render, duration, music, onProgress });
+  if (!video) return recordRealtime({ render, prepare, duration, music, onProgress });
   const audio = music ? await pickAudioCodec() : null;
 
   const target = new ArrayBufferTarget();
@@ -328,6 +392,7 @@ export async function recordClip({ render, duration, music, onProgress = () => {
   const frames = Math.round(duration * FPS);
   for (let f = 0; f < frames; f++) {
     if (failure) throw failure;
+    if (prepare) await prepare(f / FPS);
     render(ctx, f / FPS);
     const vf = new VideoFrame(cnv, { timestamp: Math.round(f * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
     venc.encode(vf, { keyFrame: f % (FPS * 2) === 0 });
@@ -367,7 +432,7 @@ export async function recordClip({ render, duration, music, onProgress = () => {
 }
 
 // Navegadores sem WebCodecs: grava em tempo real com o MediaRecorder.
-async function recordRealtime({ render, duration, music, onProgress }) {
+async function recordRealtime({ render, prepare, duration, music, onProgress }) {
   if (!('MediaRecorder' in window)) throw new Error('Este navegador não grava vídeo. Use o Google Chrome ou o Edge.');
   const cnv = document.createElement('canvas');
   cnv.width = W;
@@ -393,8 +458,9 @@ async function recordRealtime({ render, duration, music, onProgress }) {
   rec.start(250);
   const t0 = performance.now();
   await new Promise((resolve) => {
-    const tick = () => {
+    const tick = async () => {
       const t = (performance.now() - t0) / 1000;
+      if (prepare) await prepare(Math.min(t, duration));
       render(ctx, Math.min(t, duration));
       onProgress(Math.min(1, t / duration));
       if (t >= duration) resolve(); else requestAnimationFrame(tick);
@@ -428,6 +494,12 @@ export function defaultCaptions(ad) {
   if (!out.length) out.push('Conheça os detalhes', 'Acabamento de qualidade', 'Pronto para instalar');
   out.push('Veja todos os detalhes no anúncio');
   return out;
+}
+
+// Roteiro padrão da narração quando a IA não mandou um.
+export function defaultScript(ad, captions) {
+  if (ad?.clip_roteiro) return String(ad.clip_roteiro).trim();
+  return captions.map((c) => c.replace(/[.!?]*$/, '.')).join(' ');
 }
 
 // Palavras que o Mercado Livre não aceita nos Clips.

@@ -4,7 +4,10 @@ import {
 } from './imagem.js';
 import { generateAd, generateBackdrop, searchBackdrops, fetchImage, pickBackdrops } from './ia.js';
 import { makeZip } from './zip.js';
-import { W, H, buildScenes, makeRenderer, makeMusic, recordClip, defaultCaptions, forbidden } from './clip.js';
+import { W, H, buildScenes, makeRenderer, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden } from './clip.js';
+import { estimateDepth, makeOrbit } from './tresd.js';
+import { speak, sentences } from './voz.js';
+import { recordPresenter, presenterFrames } from './apresentador.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -280,17 +283,37 @@ class Job {
   // ---------- vídeo para Clips ----------
 
   buildClipUi() {
-    this.capEl = el('textarea', { rows: 6, placeholder: 'Uma legenda por linha (aparecem uma por cena)' });
+    this.capEl = el('textarea', { rows: 5, placeholder: 'Uma legenda por linha (aparecem uma por cena)' });
     this.capEl.addEventListener('input', () => { this.capEdited = true; this.checkCaptions(); });
     this.capWarn = el('p', { class: 'hint' });
+    this.scriptEl = el('textarea', { rows: 4, placeholder: 'Texto que a voz vai falar (ou que você vai ler na câmera)' });
+    this.scriptEl.addEventListener('input', () => { this.scriptEdited = true; this.voice = null; this.checkCaptions(); });
     this.durEl = el('select', {}, [15, 20, 30, 45, 60].map((d) => el('option', { value: d }, `${d} segundos`)));
     this.durEl.value = store.get('clip_dur', '20');
     this.durEl.onchange = () => store.set('clip_dur', this.durEl.value);
-    this.musicEl = el('input', { type: 'checkbox' });
-    this.musicEl.checked = store.get('clip_music', '1') === '1';
-    this.musicEl.onchange = () => store.set('clip_music', this.musicEl.checked ? '1' : '0');
+    const box = (key, def, label) => {
+      const c = el('input', { type: 'checkbox' });
+      c.checked = store.get(key, def) === '1';
+      c.onchange = () => { store.set(key, c.checked ? '1' : '0'); this.updateClipHints(); };
+      return [c, el('label', { class: 'check' }, c, ' ' + label)];
+    };
+    let row;
+    [this.musicEl, row] = box('clip_music', '1', 'Música de fundo (criada pelo app, livre de direitos autorais)');
+    this.musicRow = row;
+    [this.voiceEl, row] = box('clip_voice', '1', 'Narração com voz em português (IA grátis no seu navegador)');
+    this.voiceRow = row;
+    [this.orbitEl, row] = box('clip_orbit', '1', 'Giro 3D do produto (IA de profundidade)');
+    this.orbitRow = row;
     this.colorEl = el('input', { type: 'color', value: store.get('clip_color', '#3483fa') });
     this.colorEl.onchange = () => store.set('clip_color', this.colorEl.value);
+    this.angleEl = el('input', { type: 'file', accept: 'image/*', multiple: '' });
+    this.angleEl.onchange = () => this.addAngles(this.angleEl.files);
+    this.angleInfo = el('span', { class: 'hint' });
+    this.angles = [];
+    this.presenter = null;
+    this.camBtn = el('button', { type: 'button', class: 'ghost' }, 'Gravar apresentador (câmera)');
+    this.camBtn.onclick = () => this.recordCam();
+    this.camInfo = el('span', { class: 'hint' });
     this.previewBtn = el('button', { type: 'button', class: 'ghost', disabled: '' }, 'Pré-visualizar');
     this.clipBtn = el('button', { type: 'button', disabled: '' }, 'Gerar vídeo MP4');
     this.previewBtn.onclick = () => this.previewClip();
@@ -298,23 +321,37 @@ class Job {
     this.clipCanvas = el('canvas', { class: 'clip-view', width: W, height: H });
     this.clipOut = el('div', { class: 'clip-out' });
     this.clipMsg = el('p', { class: 'hint' }, 'Disponível quando as fotos ficarem prontas.');
+    this.durNote = el('p', { class: 'hint' });
     return el('div', { class: 'clip' },
       el('div', { class: 'clip-form' },
-        el('label', {}, 'Legendas do vídeo (a IA escreve; pode editar)', this.capEl), this.capWarn,
+        el('label', {}, 'Roteiro falado (a IA escreve; pode editar)', this.scriptEl),
+        el('label', {}, 'Legendas das cenas (usadas quando não há narração)', this.capEl), this.capWarn,
+        el('label', {}, 'Fotos da mesma peça em outros ângulos (opcional)', this.angleEl), this.angleInfo,
+        this.voiceRow, this.orbitRow, this.musicRow,
         el('div', { class: 'clip-row' },
           el('label', {}, 'Duração', this.durEl),
           el('label', {}, 'Cor do destaque', this.colorEl)),
-        el('label', { class: 'check' }, this.musicEl, ' Música de fundo (criada pelo app, livre de direitos autorais)'),
+        this.durNote,
+        el('div', { class: 'job-actions', style: 'justify-content:flex-start' }, this.camBtn, this.camInfo),
         el('div', { class: 'job-actions', style: 'justify-content:flex-start' }, this.previewBtn, this.clipBtn),
         this.clipMsg,
-        el('p', { class: 'hint' }, 'Formato dos Clips: vertical 1080x1920 (9:16), entre 10 e 60 segundos, MP4. Sem preço, promoção, frete ou contato no vídeo. O Mercado Livre dá preferência a vídeos mostrando o produto em uso, então este vídeo animado pode ser recusado na moderação; se isso acontecer, grave o produto em uso no celular e use estas legendas.')),
+        el('p', { class: 'hint' }, 'Formato dos Clips: vertical 1080x1920 (9:16), entre 10 e 60 segundos, MP4. Sem preço, promoção, frete ou contato no vídeo. O Mercado Livre dá preferência a vídeos com uma pessoa mostrando o produto: gravar o apresentador pela câmera deixa o vídeo mais real e com mais chance de aprovação.')),
       el('div', { class: 'clip-media' }, this.clipCanvas, this.clipOut));
   }
 
+  updateClipHints() {
+    this.durEl.disabled = !!this.presenter || this.voiceEl.checked;
+    this.voiceEl.disabled = !!this.presenter;
+    this.durNote.textContent = this.presenter
+      ? `A duração segue a sua gravação (${Math.round(this.presenter.duration)} s). A narração por IA fica desligada, porque a voz é a sua.`
+      : this.voiceEl.checked ? 'A duração segue o tamanho da narração (de 10 a 60 segundos).' : '';
+  }
+
   fillCaptions() {
-    if (this.capEdited) return;
-    this.capEl.value = defaultCaptions(this.ad).join('\n');
+    if (!this.capEdited) this.capEl.value = defaultCaptions(this.ad).join('\n');
+    if (!this.scriptEdited) { this.scriptEl.value = defaultScript(this.ad, this.captions()); this.voice = null; }
     this.checkCaptions();
+    this.updateClipHints();
   }
 
   captions() {
@@ -322,45 +359,128 @@ class Job {
   }
 
   checkCaptions() {
-    const bad = this.captions().map(forbidden).filter(Boolean);
-    this.capWarn.textContent = bad.length ? `Atenção: o Mercado Livre não aceita "${bad[0]}" nos Clips (preço, promoção, frete ou contato). Tire das legendas.` : '';
+    const bad = [...this.captions(), this.scriptEl.value].map(forbidden).filter(Boolean);
+    this.capWarn.textContent = bad.length ? `Atenção: o Mercado Livre não aceita "${bad[0]}" nos Clips (preço, promoção, frete ou contato). Tire do roteiro e das legendas.` : '';
     this.capWarn.classList.toggle('count', !!bad.length);
     this.capWarn.classList.toggle('bad', !!bad.length);
   }
 
+  async addAngles(files) {
+    const list = [...files].filter((f) => f.type.startsWith('image/'));
+    this.angleEl.value = '';
+    for (const [n, f] of list.entries()) {
+      try {
+        const prep = await prepareProduct(f, {
+          removeBg: true, aiUpscale: $('aiUpscale').checked, maxSharp: false, colorFix: $('colorFix').checked,
+          onStatus: (m) => { this.angleInfo.textContent = `Foto ${n + 1} de ${list.length}: ${m}`; },
+        });
+        this.angles.push({ layer: prep.layer, orbit: null, depth: null });
+      } catch (e) {
+        console.warn('Foto de ângulo falhou', e);
+      }
+    }
+    this.angleInfo.textContent = this.angles.length ? `${this.angles.length} foto(s) de outros ângulos no vídeo.` : 'Não consegui usar essas fotos.';
+  }
+
+  async recordCam() {
+    this.stopPreview?.();
+    try {
+      const rec = await recordPresenter(this.scriptEl.value.trim(), 60);
+      if (!rec) return;
+      if (rec.duration < 3 || !rec.frames.length) throw new Error('A gravação ficou curta demais.');
+      this.presenter = rec;
+      this.camInfo.replaceChildren(`Gravação de ${Math.round(rec.duration)} s pronta. `,
+        Object.assign(el('button', { type: 'button', class: 'ghost' }, 'Remover'), {
+          onclick: () => { this.presenter = null; this.camInfo.textContent = ''; this.updateClipHints(); },
+        }));
+      this.updateClipHints();
+    } catch (e) {
+      this.camInfo.textContent = e.message || String(e);
+    }
+  }
+
+  async orbitFor(item) {
+    if (!this.orbitEl.checked) return null;
+    if (!item.orbit) {
+      item.depth = item.depth || await estimateDepth(item.layer, (m) => { this.clipMsg.textContent = m; });
+      item.orbit = makeOrbit(item.layer, item.depth);
+    }
+    return item.orbit;
+  }
+
   async clipRenderer() {
+    const msg = (m) => { this.clipMsg.textContent = m; };
     const load = async (id) => (this.blobs[id] ? createImageBitmap(this.blobs[id]) : null);
     const photos = { sombra: await load('sombra'), par: await load('par'), frente: await load('fundo-frente'), lado: await load('fundo-lado') };
-    const scenes = buildScenes({ layer: this.layer, photos, captions: this.captions() });
-    const duration = Number(this.durEl.value);
-    return { render: makeRenderer(scenes, duration, this.colorEl.value), duration };
+    this.main = this.main?.layer === this.layer ? this.main : { layer: this.layer };
+    msg('Preparando o giro 3D...');
+    const orbit = await this.orbitFor(this.main);
+    const angles = [];
+    for (const a of this.angles) angles.push({ layer: a.layer, orbit: await this.orbitFor(a) });
+
+    let duration = Number(this.durEl.value), subtitles = null, voice = null, presenter = null;
+    const script = this.scriptEl.value.trim();
+    if (this.presenter) {
+      presenter = this.presenter;
+      duration = Math.min(60, Math.max(10, presenter.duration));
+      // legendas no tempo da fala, divididas pelo tamanho de cada frase
+      const ss = sentences(script);
+      const total = ss.reduce((n, x) => n + x.length, 0) || 1;
+      let t = 0.3;
+      subtitles = ss.map((x) => { const d = (presenter.duration - 0.6) * x.length / total; const r = { text: x, start: t, end: t + d }; t += d; return r; });
+    } else if (this.voiceEl.checked && script) {
+      try {
+        if (!this.voice || this.voice.text !== script) this.voice = { text: script, ...(await speak(script, { onStatus: msg })) };
+        voice = this.voice;
+        duration = Math.min(60, Math.max(10, voice.buffer.duration + 1.4));
+        subtitles = voice.parts.map((x) => ({ text: x.text, start: x.start + 0.4, end: x.end + 0.4 }));
+      } catch (e) {
+        console.warn('Narração indisponível', e);
+        this.voiceWarn = 'Não consegui carregar a voz (precisa de internet na primeira vez); o vídeo saiu só com música e legendas.';
+      }
+    }
+
+    const scenes = buildScenes({ layer: this.layer, orbit, angles, photos, captions: this.captions() });
+    const overlay = {};
+    const frames = presenter ? presenterFrames(presenter) : null;
+    const prepare = frames ? async (t) => { overlay.presenter = await frames.at(t); } : null;
+    msg('Montando a trilha sonora...');
+    const sound = await makeSoundtrack({ duration, music: this.musicEl.checked, voice: voice?.buffer, presenter: presenter?.audio }).catch((e) => { console.warn(e); return null; });
+    return { render: makeRenderer(scenes, duration, this.colorEl.value, { subtitles, overlay }), prepare, duration, sound };
   }
 
   async previewClip() {
     if (!this.layer) return;
     this.stopPreview?.();
-    const { render, duration } = await this.clipRenderer();
+    this.voiceWarn = '';
+    this.clipBtn.disabled = this.previewBtn.disabled = true;
+    let r;
+    try { r = await this.clipRenderer(); } catch (e) {
+      console.error(e);
+      this.clipMsg.textContent = 'Erro na pré-visualização: ' + (e.message || e);
+      return;
+    } finally { this.clipBtn.disabled = this.previewBtn.disabled = false; }
+    const { render, prepare, duration, sound } = r;
+    this.clipMsg.textContent = this.voiceWarn || 'Pré-visualizando...';
     const ctx = this.clipCanvas.getContext('2d');
     this.clipCanvas.hidden = false;
     let ac = null;
-    if (this.musicEl.checked) {
-      try {
-        const buf = await makeMusic(duration);
-        ac = new AudioContext();
-        const src = ac.createBufferSource();
-        src.buffer = buf;
-        src.connect(ac.destination);
-        src.start();
-      } catch (e) { console.warn('Prévia sem música', e); }
+    if (sound) {
+      ac = new AudioContext();
+      const src = ac.createBufferSource();
+      src.buffer = sound;
+      src.connect(ac.destination);
+      src.start();
     }
     const t0 = performance.now();
     let stop = false;
     this.stopPreview = () => { stop = true; ac?.close(); this.stopPreview = null; };
-    const tick = () => {
+    const tick = async () => {
       if (stop) return;
-      const t = (performance.now() - t0) / 1000;
-      render(ctx, Math.min(t, duration - 0.001));
-      if (t < duration) requestAnimationFrame(tick); else this.stopPreview?.();
+      const t = Math.min((performance.now() - t0) / 1000, duration - 0.001);
+      if (prepare) await prepare(t);
+      render(ctx, t);
+      if (t < duration - 0.01) requestAnimationFrame(tick); else this.stopPreview?.();
     };
     tick();
   }
@@ -368,13 +488,12 @@ class Job {
   async makeClip() {
     if (!this.layer) return;
     this.stopPreview?.();
-    this.clipBtn.disabled = this.previewBtn.disabled = true;
+    this.voiceWarn = '';
+    this.clipBtn.disabled = this.previewBtn.disabled = this.camBtn.disabled = true;
     try {
-      const { render, duration } = await this.clipRenderer();
-      this.clipMsg.textContent = 'Criando a música...';
-      const music = this.musicEl.checked ? await makeMusic(duration).catch(() => null) : null;
+      const { render, prepare, duration, sound } = await this.clipRenderer();
       const res = await recordClip({
-        render, duration, music,
+        render, prepare, duration, music: sound,
         onProgress: (p) => { this.clipMsg.textContent = `Gravando o vídeo... ${Math.round(p * 100)}%`; },
       });
       if (this.clipUrl) URL.revokeObjectURL(this.clipUrl);
@@ -386,13 +505,14 @@ class Job {
       this.clipOut.replaceChildren(
         el('video', { src: this.clipUrl, controls: '', playsinline: '', class: 'clip-view' }),
         el('a', { class: 'btn', href: this.clipUrl, download: `${this.base}-clip.${res.ext}` }, `Baixar vídeo (${res.ext.toUpperCase()}, ${mb} MB)`));
-      this.clipMsg.textContent = res.warning || `Vídeo pronto: ${duration} s, 1080x1920, ${res.ext.toUpperCase()}.`;
-      this.clipMsg.classList.toggle('warn', !!res.warning);
+      const warn = [res.warning, this.voiceWarn].filter(Boolean).join(' ');
+      this.clipMsg.textContent = warn || `Vídeo pronto: ${Math.round(duration)} s, 1080x1920, ${res.ext.toUpperCase()}.`;
+      this.clipMsg.classList.toggle('warn', !!warn);
     } catch (e) {
       console.error(e);
       this.clipMsg.textContent = 'Erro ao gravar o vídeo: ' + (e.message || e);
     } finally {
-      this.clipBtn.disabled = this.previewBtn.disabled = false;
+      this.clipBtn.disabled = this.previewBtn.disabled = this.camBtn.disabled = false;
     }
   }
 

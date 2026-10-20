@@ -1,0 +1,2 @@
+piper_phonemize.js: build WebAssembly do piper-phonemize (MIT), extraído de @mintplex-labs/piper-tts-web 1.0.5 (MIT).
+Os arquivos .wasm/.data (espeak-ng, GPL-3.0) e a voz pt_BR-faber-medium (Piper, licença livre) são baixados em tempo de execução.

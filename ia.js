@@ -28,6 +28,7 @@ Responda SOMENTE com um JSON válido (sem markdown), neste formato:
   "palavras_chave": ["termos que os compradores pesquisam"],
   "perguntas_frequentes": [{"pergunta": "...", "resposta": "..."}],
   "dicas": "o que conferir antes de publicar e o que os anúncios mais vendidos fazem",
+  "clip_roteiro": "texto falado por um apresentador num vídeo vertical de 20 a 30 segundos (45 a 70 palavras), em português do Brasil, tom natural de vendedor confiante: 4 a 6 frases curtas, começa chamando atenção para o problema ou o produto, mostra os benefícios reais e termina convidando a ver o anúncio. Sem preço, promoção, frete, contato nem emojis",
   "clip_legendas": ["5 frases curtas (até 32 caracteres cada) para as legendas de um vídeo vertical do Mercado Livre Clips: 1ª chama atenção para o produto, depois benefícios e diferenciais reais, a última convida a ver o anúncio. Sem preço, sem promoção, sem frete, sem contato, sem emojis"],
   "fundo": {
     "descricao": "em português: o veículo compatível (se for peça automotiva) ou o objeto/ambiente onde o produto é usado",

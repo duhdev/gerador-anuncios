@@ -38,12 +38,14 @@ Como funciona:
 - Dados que não aparecem na foto ficam marcados como `[CONFIRMAR: ...]`. Preencha o campo "Informações extras" (marca, medidas, voltagem) para um texto mais completo.
 
 **Vídeo para o Mercado Livre Clips**
-- Depois das fotos, cada produto ganha um editor de vídeo vertical 1080x1920 (9:16), em MP4, com 15 a 60 segundos (o Clips aceita de 10 a 60).
-- O vídeo é montado com as 5 fotos: o produto entra na tela, a câmera aproxima nos detalhes, mostra o veículo com a peça em destaque e o par, e termina na foto com sombra.
-- O Gemini escreve as legendas (sem preço, promoção, frete ou contato, que o Clips não aceita). Dá para editar as legendas, a duração e a cor do destaque, e pré-visualizar antes de gravar.
-- A música de fundo é criada pelo próprio app, então não tem problema de direitos autorais.
-- Use o Google Chrome ou o Edge: eles gravam em H.264, o formato que o Mercado Livre aceita. O vídeo entra no "Baixar tudo (ZIP)" quando já foi gerado.
-- O Mercado Livre prefere vídeos mostrando o produto em uso. Um vídeo feito só com fotos pode ser recusado na moderação; nesse caso, grave a peça em uso com o celular e use as mesmas legendas.
+- Depois das fotos, cada produto ganha um editor de vídeo vertical 1080x1920 (9:16), em MP4, de 10 a 60 segundos.
+- Giro 3D: uma IA de profundidade (Depth Anything V2, grátis, roda no navegador) calcula o relevo da peça e a câmera gira em volta dela, com um brilho passando pela superfície. A IA é baixada na primeira vez; sem ela, o app usa o formato da peça para o relevo.
+- Outros ângulos: envie fotos da mesma peça de outros lados no campo "Fotos da mesma peça em outros ângulos". Cada uma é recortada e entra no vídeo com o giro 3D. A IA não consegue inventar com qualidade o lado que não aparece na foto, por isso as fotos reais são o melhor caminho.
+- Transições fluidas: a câmera está sempre em movimento e as cenas se fundem com aproximação, sem cortes secos.
+- Narração: o Gemini escreve o roteiro falado e uma voz neural em português (Piper, voz "faber", grátis) narra no seu navegador. As legendas acompanham cada frase da voz. A voz é baixada na primeira vez (cerca de 60 MB) e fica guardada.
+- Apresentador: "Gravar apresentador (câmera)" abre a câmera com o roteiro subindo na tela (teleprompter). Você aparece num círculo no alto do vídeo, com a sua voz. Grave pelo menos 10 segundos. Avatar realista feito por IA hoje só existe em serviços pagos (HeyGen, D-ID, Synthesia), por isso o app usa a sua gravação.
+- A música de fundo é criada pelo app (sem direitos autorais) e fica baixinha quando há fala.
+- Use o Google Chrome ou o Edge: eles gravam em H.264, o formato que o Mercado Livre aceita. O vídeo entra no "Baixar tudo (ZIP)".
 
 ## Custo e limites da IA
 - A chave do Google AI Studio na camada gratuita não cobra nada enquanto você não ativar faturamento no projeto do Google Cloud. Não ative e o custo é zero.
