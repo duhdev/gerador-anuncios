@@ -41,7 +41,8 @@ Como funciona:
 - Depois das fotos, cada produto ganha um editor de vídeo vertical 1080x1920 (9:16), em MP4, de 10 a 60 segundos.
 - Giro 3D: uma IA de profundidade (Depth Anything V2, grátis, roda no navegador) calcula o relevo da peça e a câmera gira em volta dela, com um brilho passando pela superfície. A IA é baixada na primeira vez; sem ela, o app usa o formato da peça para o relevo.
 - Outros ângulos: envie fotos da mesma peça de outros lados no campo "Fotos da mesma peça em outros ângulos". Cada uma é recortada e entra no vídeo com o giro 3D. A IA não consegue inventar com qualidade o lado que não aparece na foto, por isso as fotos reais são o melhor caminho.
-- Transições fluidas: a câmera está sempre em movimento e as cenas se fundem com aproximação, sem cortes secos.
+- Vídeo de apresentação: estúdio escuro com luz, partículas e reflexo no piso. A peça entra voando com rastro de movimento, aparece o título, os destaques entram em cartões com visto animado, uma lupa passeia mostrando o acabamento, o veículo entra num cartão, as peças direita e esquerda se encontram no meio e o final tem raios de luz com a chamada para o anúncio.
+- Transições variadas (chicote, círculo, zoom e empurrão) com efeito sonoro de "whoosh", e barra de progresso no alto.
 - Narração: o Gemini escreve o roteiro falado e uma voz neural em português (Piper, voz "faber", grátis) narra no seu navegador. As legendas acompanham cada frase da voz. A voz é baixada na primeira vez (cerca de 60 MB) e fica guardada.
 - Apresentador: "Gravar apresentador (câmera)" abre a câmera com o roteiro subindo na tela (teleprompter). Você aparece num círculo no alto do vídeo, com a sua voz. Grave pelo menos 10 segundos. Avatar realista feito por IA hoje só existe em serviços pagos (HeyGen, D-ID, Synthesia), por isso o app usa a sua gravação.
 - A música de fundo é criada pelo app (sem direitos autorais) e fica baixinha quando há fala.

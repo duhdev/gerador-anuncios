@@ -4,7 +4,7 @@ import {
 } from './imagem.js';
 import { generateAd, generateBackdrop, searchBackdrops, fetchImage, pickBackdrops } from './ia.js';
 import { makeZip } from './zip.js';
-import { W, H, buildScenes, makeRenderer, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden } from './clip.js';
+import { W, H, buildScenes, makeRenderer, transitionTimes, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden } from './clip.js';
 import { estimateDepth, makeOrbit } from './tresd.js';
 import { speak, sentences } from './voz.js';
 import { recordPresenter, presenterFrames } from './apresentador.js';
@@ -440,12 +440,15 @@ class Job {
       }
     }
 
-    const scenes = buildScenes({ layer: this.layer, orbit, angles, photos, captions: this.captions() });
+    const scenes = buildScenes({
+      layer: this.layer, orbit, angles, photos, captions: this.captions(),
+      vehicle: (this.ad?.fundo?.busca || '').slice(0, 28), mirror: $('mirrorPair').checked, color: this.colorEl.value,
+    });
     const overlay = {};
     const frames = presenter ? presenterFrames(presenter) : null;
     const prepare = frames ? async (t) => { overlay.presenter = await frames.at(t); } : null;
     msg('Montando a trilha sonora...');
-    const sound = await makeSoundtrack({ duration, music: this.musicEl.checked, voice: voice?.buffer, presenter: presenter?.audio }).catch((e) => { console.warn(e); return null; });
+    const sound = await makeSoundtrack({ duration, music: this.musicEl.checked, voice: voice?.buffer, presenter: presenter?.audio, whooshes: transitionTimes(scenes, duration) }).catch((e) => { console.warn(e); return null; });
     return { render: makeRenderer(scenes, duration, this.colorEl.value, { subtitles, overlay }), prepare, duration, sound };
   }
 

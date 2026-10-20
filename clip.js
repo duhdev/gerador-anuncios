@@ -4,229 +4,11 @@
 import { Muxer, ArrayBufferTarget } from './vendor/mp4-muxer/mp4-muxer.mjs';
 
 export const W = 1080, H = 1920, FPS = 30;
-const FADE = 0.7;           // transição entre cenas (s)
 const RATE = 44100;
 
-const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
-const lerp = (a, b, t) => a + (b - a) * t;
 
-// ---------- cenas ----------
-
-function paintWhite(ctx) {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#ffffff');
-  g.addColorStop(1, '#eef1f5');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-}
-
-function contactShadow(ctx, cx, y, w) {
-  ctx.save();
-  ctx.translate(cx, y);
-  ctx.scale(1, 0.12);
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.45);
-  g.addColorStop(0, 'rgba(0,0,0,.30)');
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(0, 0, w * 0.45, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// produto girando devagar na frente da câmera (giro 3D com a profundidade da IA)
-// `phase` muda o sentido do giro entre as cenas
-function sceneOrbit(layer, orbit, phase = 0) {
-  return (ctx, t, dur) => {
-    paintWhite(ctx);
-    const p = t / dur;
-    const k = Math.min(W * 0.84 / layer.width, H * 0.5 / layer.height) * lerp(0.94, 1.04, ease(p));
-    const w = layer.width * k, h = layer.height * k;
-    const cx = W / 2, cy = H * 0.44 + Math.sin(t * 1.3) * 8;
-    contactShadow(ctx, cx, cy + h / 2 + 10, w);
-    const angle = Math.sin(phase + (p - 0.5) * Math.PI) * (phase ? -1 : 1);
-    if (orbit) orbit(ctx, cx - w / 2, cy - h / 2, w, h, angle, lerp(-0.4, 1.4, p));
-    else {
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(Math.sin(t * 1.6) * 0.02);
-      ctx.drawImage(layer, -w / 2, -h / 2, w, h);
-      ctx.restore();
-    }
-  };
-}
-
-// aproximação percorrendo o produto: mostra os detalhes
-function sceneDetail(layer, orbit) {
-  return (ctx, t, dur) => {
-    paintWhite(ctx);
-    const p = ease(t / dur);
-    const k = Math.min(W * 1.25 / layer.width, H * 0.62 / layer.height) * lerp(1, 1.18, p);
-    const w = layer.width * k, h = layer.height * k;
-    const x = W / 2 - w / 2 + lerp(w * 0.12, -w * 0.12, p);
-    const y = H * 0.42 - h / 2;
-    if (orbit) orbit(ctx, x, y, w, h, lerp(0.5, -0.5, p), lerp(1.3, -0.3, p));
-    else ctx.drawImage(layer, x, y, w, h);
-  };
-}
-
-// foto quadrada de fundo branco ocupando a largura, sem faixas pretas
-function sceneSquare(img, zoomIn = true) {
-  return (ctx, t, dur) => {
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, W, H);
-    const p = ease(t / dur);
-    const s = W / img.width * (zoomIn ? lerp(1, 1.12, p) : lerp(1.12, 1, p));
-    const w = img.width * s, h = img.height * s;
-    ctx.drawImage(img, (W - w) / 2, H * 0.43 - h / 2, w, h);
-  };
-}
-
-// foto com o veículo: a foto inteira (peça e destaque) no centro e a mesma
-// foto ampliada e desfocada preenchendo o resto da tela vertical
-function sceneCover(img, dir = 1) {
-  const bg = new OffscreenCanvas(W / 4, H / 4);
-  const b = bg.getContext('2d');
-  const k = Math.max(bg.width / img.width, bg.height / img.height) * 1.1;
-  b.filter = 'blur(10px) brightness(0.85)';
-  b.drawImage(img, (bg.width - img.width * k) / 2, (bg.height - img.height * k) / 2, img.width * k, img.height * k);
-  return (ctx, t, dur) => {
-    const p = ease(t / dur);
-    ctx.drawImage(bg, 0, 0, W, H);
-    const s = W / img.width * lerp(1.0, 1.1, p);
-    const w = img.width * s, h = img.height * s;
-    const x = (W - w) / 2 + dir * lerp(-1, 1, p) * (w - W) / 2;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,.35)';
-    ctx.shadowBlur = 50;
-    ctx.drawImage(img, x, H * 0.43 - h / 2, w, h);
-    ctx.restore();
-  };
-}
-
-// layer/orbit: produto principal; angles: [{ layer, orbit }] fotos de outros ângulos
-export function buildScenes({ layer, orbit, angles = [], photos, captions }) {
-  const list = [];
-  const cap = [...captions];
-  const last = cap.length > 1 ? cap.pop() : '';
-  const add = (draw) => list.push({ draw, caption: cap.shift() || '' });
-  if (layer) add(sceneOrbit(layer, orbit, 0));
-  if (photos.frente) add(sceneCover(photos.frente, 1));
-  angles.forEach((a, i) => add(i % 2 ? sceneOrbit(a.layer, a.orbit, Math.PI / 2) : sceneDetail(a.layer, a.orbit)));
-  if (layer) add(sceneDetail(layer, orbit));
-  if (photos.lado) add(sceneCover(photos.lado, -1));
-  if (photos.par) add(sceneSquare(photos.par, true));
-  // legendas que sobraram ganham cenas extras
-  const extra = [layer && sceneOrbit(layer, orbit, Math.PI / 2), photos.sombra && sceneSquare(photos.sombra, false)].filter(Boolean);
-  for (let i = 0; cap.length && i < extra.length; i++) add(extra[i]);
-  const outro = photos.sombra ? sceneSquare(photos.sombra, false) : layer ? sceneOrbit(layer, orbit, Math.PI / 2) : null;
-  if (outro) list.push({ draw: outro, caption: last });
-  return list;
-}
-
-// ---------- legenda ----------
-
-function wrap(ctx, text, maxW) {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const t = cur ? cur + ' ' + w : w;
-    if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t;
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-function drawCaption(ctx, text, t, color) {
-  if (!text) return;
-  const a = ease(t / 0.3);
-  let size = 72, lines;
-  for (; size >= 40; size -= 4) {
-    ctx.font = `800 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
-    lines = wrap(ctx, text, W - 220);
-    if (lines.length <= 3) break;
-  }
-  const lh = size * 1.22, pad = 34;
-  const boxW = Math.max(...lines.map((l) => ctx.measureText(l).width)) + pad * 2;
-  const boxH = lines.length * lh + pad * 1.4;
-  const y = H * 0.71 + (1 - a) * 60;
-  ctx.save();
-  ctx.globalAlpha *= a;
-  ctx.fillStyle = 'rgba(17,20,24,.82)';
-  ctx.beginPath();
-  ctx.roundRect((W - boxW) / 2, y, boxW, boxH, 28);
-  ctx.fill();
-  ctx.fillStyle = color;
-  ctx.fillRect((W - boxW) / 2 + 28, y + boxH - 10, boxW - 56, 6);
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  lines.forEach((l, i) => ctx.fillText(l, W / 2, y + pad * 0.7 + lh * (i + 0.5)));
-  ctx.restore();
-}
-
-// apresentador gravado pela câmera, num círculo no alto da tela
-function drawPresenter(ctx, img, time) {
-  const a = ease(time / 0.5);
-  const r = 180 * lerp(0.8, 1, a), cx = W - 60 - 180, cy = 110 + 180;
-  ctx.save();
-  ctx.globalAlpha *= a;
-  ctx.shadowColor = 'rgba(0,0,0,.35)';
-  ctx.shadowBlur = 30;
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.arc(cx, cy, r + 10, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowColor = 'transparent';
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.clip();
-  ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
-  ctx.restore();
-}
-
-function zoomed(ctx, s, fn) {
-  ctx.save();
-  ctx.translate(W / 2, H / 2);
-  ctx.scale(s, s);
-  ctx.translate(-W / 2, -H / 2);
-  fn();
-  ctx.restore();
-}
-
-// subtitles: [{ text, start, end }] legendas no tempo da voz (substituem as das cenas)
-// overlay: { presenter } preenchido por prepare(t) antes de cada quadro
-export function makeRenderer(scenes, duration, color = '#3483fa', { subtitles = null, overlay = {} } = {}) {
-  const per = duration / scenes.length;
-  return (ctx, time) => {
-    const i = Math.min(scenes.length - 1, Math.floor(time / per));
-    const t = time - i * per;
-    const left = per - t;
-    ctx.globalAlpha = 1;
-    // transição fluida: a cena que sai aproxima enquanto a próxima surge,
-    // com a câmera sempre em movimento (sem cortes secos)
-    const out = i < scenes.length - 1 && left < FADE ? ease(1 - left / FADE) : 0;
-    zoomed(ctx, 1 + 0.08 * out, () => scenes[i].draw(ctx, t + (i ? FADE : 0), per + FADE));
-    if (out) {
-      ctx.globalAlpha = out;
-      zoomed(ctx, lerp(0.94, 1, out), () => scenes[i + 1].draw(ctx, FADE - left, per + FADE));
-      ctx.globalAlpha = 1;
-    }
-    if (subtitles) {
-      const s = subtitles.find((x) => time >= x.start && time < x.end + 0.15);
-      if (s) drawCaption(ctx, s.text, time - s.start, color);
-    } else {
-      drawCaption(ctx, scenes[i].caption, t, color);
-    }
-    if (overlay.presenter) drawPresenter(ctx, overlay.presenter, time);
-    // final some suavemente para o branco
-    if (time > duration - 0.4) {
-      ctx.fillStyle = `rgba(255,255,255,${(time - duration + 0.4) / 0.4})`;
-      ctx.fillRect(0, 0, W, H);
-    }
-  };
-}
+// As cenas e o renderizador ficam em cenas.js.
+export { buildScenes, makeRenderer, transitionTimes } from './cenas.js';
 
 // ---------- trilha sonora (sintetizada, livre de direitos) ----------
 
@@ -311,10 +93,30 @@ export async function makeMusic(duration) {
 
 // Junta música, narração e voz do apresentador numa trilha só (estéreo 44,1 kHz).
 // Com fala, a música fica baixinha por baixo.
-export async function makeSoundtrack({ duration, music = true, voice = null, voiceAt = 0.4, presenter = null }) {
+export async function makeSoundtrack({ duration, music = true, voice = null, voiceAt = 0.4, presenter = null, whooshes = [] }) {
   const speech = voice || presenter;
   if (!music && !speech) return null;
   const ac = new OfflineAudioContext(2, Math.ceil(RATE * duration), RATE);
+  // "whoosh" nas transições: ruído passando por um filtro que varre as frequências
+  if (music && whooshes.length) {
+    const len = Math.round(RATE * 0.6);
+    const nb = ac.createBuffer(1, len, RATE);
+    const d = nb.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / len);
+    for (const at of whooshes) {
+      const st = Math.max(0, at - 0.3);
+      const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+      s.buffer = nb;
+      f.type = 'bandpass';
+      f.Q.value = 1.2;
+      f.frequency.setValueAtTime(400, st);
+      f.frequency.exponentialRampToValueAtTime(4000, st + 0.3);
+      f.frequency.exponentialRampToValueAtTime(800, st + 0.6);
+      g.gain.value = speech ? 0.12 : 0.28;
+      s.connect(f).connect(g).connect(ac.destination);
+      s.start(st);
+    }
+  }
   const play = (buf, gain, at = 0) => {
     const s = ac.createBufferSource(), g = ac.createGain();
     s.buffer = buf;
