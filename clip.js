@@ -92,9 +92,9 @@ export async function makeMusic(duration) {
 }
 
 // Junta música, narração e voz do apresentador numa trilha só (estéreo 44,1 kHz).
-// Com fala, a música fica baixinha por baixo.
-export async function makeSoundtrack({ duration, music = true, voice = null, voiceAt = 0.4, presenter = null, whooshes = [] }) {
-  const speech = voice || presenter;
+// Com fala, a música fica baixinha por baixo. intro: áudio do avatar, no começo.
+export async function makeSoundtrack({ duration, music = true, voice = null, voiceAt = 0.4, presenter = null, presenterAt = 0, intro = null, whooshes = [] }) {
+  const speech = voice || presenter || intro;
   if (!music && !speech) return null;
   const ac = new OfflineAudioContext(2, Math.ceil(RATE * duration), RATE);
   // "whoosh" nas transições: ruído passando por um filtro que varre as frequências
@@ -126,7 +126,8 @@ export async function makeSoundtrack({ duration, music = true, voice = null, voi
   };
   if (music) play(await makeMusic(duration), speech ? 0.22 : 0.8);
   if (voice) play(voice, 1, voiceAt);
-  if (presenter) play(presenter, 1.1);
+  if (presenter) play(presenter, 1.1, presenterAt);
+  if (intro) play(intro, 1.1);   // fala do avatar na abertura
   return ac.startRendering();
 }
 

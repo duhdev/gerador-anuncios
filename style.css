@@ -202,3 +202,5 @@ td:first-child { color: var(--muted); width: 40%; background: var(--soft); }
   .upload-head h1 { font-size: 20px; }
   .batch-bar { top: 64px; }
 }
+.avatar-box { margin: 18px 0 6px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--soft); }
+.avatar-box .hint { margin: 6px 0 10px; }

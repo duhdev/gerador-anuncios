@@ -44,7 +44,8 @@ Como funciona:
 - Vídeo de apresentação: estúdio escuro com luz, partículas e reflexo no piso. A peça entra voando com rastro de movimento, aparece o título, os destaques entram em cartões com visto animado, uma lupa passeia mostrando o acabamento, o veículo entra num cartão, as peças direita e esquerda se encontram no meio e o final tem raios de luz com a chamada para o anúncio.
 - Transições variadas (chicote, círculo, zoom e empurrão) com efeito sonoro de "whoosh", e barra de progresso no alto.
 - Narração: o Gemini escreve o roteiro falado e uma voz neural em português (Piper, voz "faber", grátis) narra no seu navegador. As legendas acompanham cada frase da voz. A voz é baixada na primeira vez (cerca de 60 MB) e fica guardada.
-- Apresentador: "Gravar apresentador (câmera)" abre a câmera com o roteiro subindo na tela (teleprompter). Você aparece num círculo no alto do vídeo, com a sua voz. Grave pelo menos 10 segundos. Avatar realista feito por IA hoje só existe em serviços pagos (HeyGen, D-ID, Synthesia), por isso o app usa a sua gravação.
+- Apresentador: "Gravar apresentador (câmera)" abre a câmera com o roteiro subindo na tela (teleprompter). Você aparece num círculo no alto do vídeo, com a sua voz. Grave pelo menos 10 segundos.
+- Avatar do Gemini (para quem assina o Google AI Pro): na aba Vídeo, "Copiar pedido para o Gemini" e "Baixar foto do produto"; cole o pedido e anexe a foto no app Gemini (ou no Flow), baixe o vídeo gerado e use "Importar vídeo do avatar". Ele vira a abertura do Clips (até 30 s), com a voz do avatar, e depois entram as cenas do produto. A assinatura não inclui a API de vídeo do Google (o Veo pela API é cobrado à parte), por isso esse passo é feito no app Gemini.
 - A música de fundo é criada pelo app (sem direitos autorais) e fica baixinha quando há fala.
 - Use o Google Chrome ou o Edge: eles gravam em H.264, o formato que o Mercado Livre aceita. O vídeo entra no "Baixar tudo (ZIP)".
 

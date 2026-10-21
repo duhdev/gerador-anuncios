@@ -8,6 +8,7 @@ import { W, H, buildScenes, makeRenderer, transitionTimes, makeSoundtrack, recor
 import { estimateDepth, makeOrbit } from './tresd.js';
 import { speak, sentences } from './voz.js';
 import { recordPresenter, presenterFrames } from './apresentador.js';
+import { avatarPrompt, importAvatar, drawCover } from './avatar.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -384,6 +385,30 @@ class Job {
     this.camBtn = el('button', { type: 'button', class: 'ghost' }, 'Gravar apresentador (câmera)');
     this.camBtn.onclick = () => this.recordCam();
     this.camInfo = el('span', { class: 'hint' });
+    this.avatar = null;
+    this.avatarFile = el('input', { type: 'file', accept: 'video/*', hidden: '' });
+    this.avatarFile.onchange = () => this.loadAvatar(this.avatarFile.files[0]);
+    this.avatarInfo = el('span', { class: 'hint' });
+    const promptBtn = el('button', { type: 'button', class: 'ghost' }, '1. Copiar pedido para o Gemini');
+    promptBtn.onclick = async () => {
+      try { await navigator.clipboard.writeText(avatarPrompt(this.ad, this.scriptEl.value.trim())); toast('Pedido copiado. Cole no Gemini junto com a foto do produto.'); }
+      catch { toast('Não consegui copiar. Tente de novo.'); }
+    };
+    const photoBtn = el('button', { type: 'button', class: 'ghost' }, '2. Baixar foto do produto');
+    photoBtn.onclick = () => {
+      const b = this.blobs.branco;
+      if (!b) return toast('A foto ainda está sendo preparada.');
+      const a = el('a', { href: URL.createObjectURL(b), download: `${this.base}-produto.jpg` });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    };
+    const importBtn = el('button', { type: 'button', class: 'ghost' }, '3. Importar vídeo do avatar');
+    importBtn.onclick = () => this.avatarFile.click();
+    this.avatarBox = el('div', { class: 'avatar-box' },
+      el('strong', {}, 'Avatar feito no Gemini (opcional)'),
+      el('p', { class: 'hint' }, 'Com a sua assinatura do Gemini, gere no app Gemini (ou no Flow) uma pessoa segurando o produto e falando. Envie o pedido e a foto, baixe o vídeo e importe aqui: ele vira a abertura do Clips, com a voz do avatar, e depois entram as cenas do produto.'),
+      el('div', { class: 'job-actions', style: 'justify-content:flex-start' }, promptBtn, photoBtn, importBtn),
+      this.avatarFile, this.avatarInfo);
     this.previewBtn = el('button', { type: 'button', class: 'ghost', disabled: '' }, 'Pré-visualizar');
     this.clipBtn = el('button', { type: 'button', disabled: '' }, 'Gerar vídeo MP4');
     this.previewBtn.onclick = () => this.previewClip();
@@ -402,6 +427,7 @@ class Job {
           el('label', {}, 'Duração', this.durEl),
           el('label', {}, 'Cor do destaque', this.colorEl)),
         this.durNote,
+        this.avatarBox,
         el('div', { class: 'job-actions', style: 'justify-content:flex-start' }, this.camBtn, this.camInfo),
         el('div', { class: 'job-actions', style: 'justify-content:flex-start' }, this.previewBtn, this.clipBtn),
         this.clipMsg,
@@ -469,6 +495,23 @@ class Job {
     }
   }
 
+  async loadAvatar(file) {
+    this.avatarFile.value = '';
+    if (!file) return;
+    this.stopPreview?.();
+    try {
+      const av = await importAvatar(file, (m) => { this.avatarInfo.textContent = m; });
+      this.avatar = av;
+      this.avatarInfo.replaceChildren(`Avatar de ${Math.round(av.duration)} s na abertura${av.audio ? ', com a voz dele' : ' (sem som)'}. `,
+        Object.assign(el('button', { type: 'button', class: 'ghost' }, 'Remover'), {
+          onclick: () => { this.avatar = null; this.avatarInfo.textContent = ''; },
+        }));
+    } catch (e) {
+      console.warn(e);
+      this.avatarInfo.textContent = e.message || String(e);
+    }
+  }
+
   async orbitFor(item) {
     if (!this.orbitEl.checked) return null;
     if (!item.orbit) {
@@ -510,6 +553,10 @@ class Job {
       }
     }
 
+    // avatar do Gemini na abertura: as cenas do produto vêm depois dele
+    const avatar = this.avatar;
+    const introDur = avatar ? avatar.duration : 0;
+    if (avatar) duration = Math.min(duration, Math.max(6, 60 - introDur));
     const scenes = buildScenes({
       layer: this.layer, orbit, angles, photos, captions: this.captions(),
       vehicle: (this.ad?.fundo?.busca || '').slice(0, 28), mirror: $('mirrorPair').checked, color: this.colorEl.value,
@@ -518,8 +565,35 @@ class Job {
     const frames = presenter ? presenterFrames(presenter) : null;
     const prepare = frames ? async (t) => { overlay.presenter = await frames.at(t); } : null;
     msg('Montando a trilha sonora...');
-    const sound = await makeSoundtrack({ duration, music: this.musicEl.checked, voice: voice?.buffer, presenter: presenter?.audio, whooshes: transitionTimes(scenes, duration) }).catch((e) => { console.warn(e); return null; });
-    return { render: makeRenderer(scenes, duration, this.colorEl.value, { subtitles, overlay }), prepare, duration, sound };
+    const render = makeRenderer(scenes, duration, this.colorEl.value, { subtitles, overlay });
+    if (!avatar) {
+      const sound = await makeSoundtrack({ duration, music: this.musicEl.checked, voice: voice?.buffer, presenter: presenter?.audio, whooshes: transitionTimes(scenes, duration) }).catch((e) => { console.warn(e); return null; });
+      return { render, prepare, duration, sound };
+    }
+    const total = introDur + duration;
+    const sound = await makeSoundtrack({
+      duration: total, music: this.musicEl.checked, voice: voice?.buffer, voiceAt: introDur + 0.4,
+      presenter: presenter?.audio, presenterAt: introDur, intro: avatar.audio,
+      whooshes: [introDur, ...transitionTimes(scenes, duration).map((x) => x + introDur)],
+    }).catch((e) => { console.warn(e); return null; });
+    const af = presenterFrames(avatar);
+    let img = null;
+    return {
+      duration: total, sound,
+      prepare: async (t) => {
+        if (t < introDur) img = await af.at(t);
+        else if (prepare) await prepare(t - introDur);
+      },
+      render: (ctx, t) => {
+        if (t >= introDur) return render(ctx, t - introDur);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+        if (img) drawCover(ctx, img, W, H);
+        const fade = Math.max(t < 0.25 ? 1 - t / 0.25 : 0, t > introDur - 0.3 ? (t - introDur + 0.3) / 0.3 : 0);
+        if (fade > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, fade)})`; ctx.fillRect(0, 0, W, H); }
+      },
+    };
   }
 
   async previewClip() {
