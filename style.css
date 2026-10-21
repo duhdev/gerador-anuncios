@@ -204,3 +204,7 @@ td:first-child { color: var(--muted); width: 40%; background: var(--soft); }
 }
 .avatar-box { margin: 18px 0 6px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--soft); }
 .avatar-box .hint { margin: 6px 0 10px; }
+.url-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+.url-row input { flex: 1; min-width: 0; margin: 0; }
+.url-row button { white-space: nowrap; }
+@media (max-width: 560px) { .url-row { flex-direction: column; } }

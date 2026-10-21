@@ -66,8 +66,12 @@
         <input id="file" type="file" accept="image/*" multiple hidden>
         <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V13m0 0-7 7m7-7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 29v6a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
         <strong>Arraste as fotos dos produtos aqui</strong>
-        <span>ou clique para escolher · JPG, PNG ou WEBP · uma foto vira um anúncio · também dá para colar (Ctrl+V)</span>
+        <span>ou clique para escolher · JPG, PNG ou WEBP · uma foto vira um anúncio · também dá para colar a imagem ou o link (Ctrl+V)</span>
       </label>
+      <form id="urlForm" class="url-row">
+        <input id="imgUrl" type="url" placeholder="Ou cole o link da imagem (https://...)" autocomplete="off">
+        <button type="submit" class="ghost">Adicionar pelo link</button>
+      </form>
       <label class="extra">Informações extras (opcional, ajuda a IA a acertar)
         <input id="extraInfo" placeholder="Ex.: Lanterna traseira Renault Master 2014 a 2022, lado direito">
       </label>
@@ -88,6 +92,11 @@
             <label class="extra">Foto do veículo (opcional; sem ela o app busca uma foto real)
               <input id="bgFile" type="file" accept="image/*">
             </label>
+            <form id="bgUrlForm" class="url-row">
+              <input id="bgUrl" type="url" placeholder="Ou cole o link da foto do veículo" autocomplete="off">
+              <button type="submit" class="ghost">Usar link</button>
+            </form>
+            <span id="bgUrlMsg" class="hint"></span>
             <label class="extra">Veículo visível: <b id="bgOpacityVal">100%</b>
               <input id="bgOpacity" type="range" min="30" max="100" value="100">
             </label>

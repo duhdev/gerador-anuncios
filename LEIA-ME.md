@@ -61,3 +61,7 @@ Como funciona:
 - `ia.js`: chamada ao Gemini e o prompt do anúncio (edite aqui para mudar o estilo do texto).
 - `vendor/`: remoção de fundo (@imgly/background-removal 1.4.5, licença AGPL) com o modelo de recorte; ONNX Runtime Web 1.23 (MIT); modelo Real-ESRGAN realesr-general-x4v3 convertido para ONNX (licença BSD-3, Xintao Wang).
 - `iniciar.bat` + `servidor.ps1` (Windows) e `servidor.py` (Python): servidor local.
+
+## Foto pelo link
+
+Além de enviar o arquivo, dá para colar o link da imagem no campo abaixo da área de envio (vários links separados por espaço viram vários anúncios), arrastar uma imagem de outra aba ou colar o link com Ctrl+V. A foto do veículo também aceita link, em Ajustes. Use o endereço da imagem (botão direito na foto, "Copiar endereço da imagem"), não o da página. Se o site bloquear o download, a foto passa pelo wsrv.nl, um serviço público e grátis de imagens.

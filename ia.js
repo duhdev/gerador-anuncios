@@ -186,6 +186,22 @@ export async function fetchImage(url) {
   return blob;
 }
 
+// Imagem colada por link. Muitos sites não deixam outra página baixar a foto
+// (CORS); nesse caso a foto passa pelo wsrv.nl, um serviço público e grátis de
+// imagens que libera o acesso.
+export async function fetchImageUrl(url) {
+  url = url.trim();
+  if (!/^(https?:|data:image\/)/i.test(url)) throw new Error('Cole um link que comece com http:// ou https://');
+  const name = decodeURIComponent(url.split(/[?#]/)[0].split('/').pop() || '').replace(/\.[a-z0-9]+$/i, '') || 'imagem';
+  let blob = null;
+  try { blob = await fetchImage(url); } catch {}
+  if (!blob && !url.startsWith('data:')) {
+    try { blob = await fetchImage(`https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png&n=-1`); } catch {}
+  }
+  if (!blob) throw new Error('Não consegui baixar a imagem desse link. Use o link da própria imagem (clique com o botão direito na foto e "Copiar endereço da imagem"), não o da página.');
+  return new File([blob], `${name.slice(0, 60)}.${(blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`, { type: blob.type });
+}
+
 /**
  * Mostra ao Gemini as fotos de veículo encontradas e a peça. Ele escolhe as
  * que mostram o veículo certo, inteiro, no ângulo em que a peça aparece, e

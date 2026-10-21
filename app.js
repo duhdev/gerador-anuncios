@@ -2,7 +2,7 @@ import {
   prepareProduct, prepareBackdrop, renderWhite, renderShadow, renderPair,
   renderSceneFront, renderSceneSide, checkPhoto, toBlob, setPartBox,
 } from './imagem.js';
-import { generateAd, generateBackdrop, searchBackdrops, fetchImage, pickBackdrops } from './ia.js';
+import { generateAd, generateBackdrop, searchBackdrops, fetchImage, fetchImageUrl, pickBackdrops } from './ia.js';
 import { makeZip } from './zip.js';
 import { W, H, buildScenes, makeRenderer, transitionTimes, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden } from './clip.js';
 import { estimateDepth, makeOrbit } from './tresd.js';
@@ -28,6 +28,7 @@ const SCENES = ['fundo-frente', 'fundo-lado'];
 const jobs = [];
 let queue = Promise.resolve();
 let userBackdrop = null;   // foto de fundo enviada (preparada uma vez)
+let bgFromUrl = null;      // foto do veículo vinda de um link
 
 // ---------- configurações ----------
 
@@ -285,7 +286,7 @@ class Job {
 
   async nextBackdrop() {
     if (!this.layer) return;
-    const f = $('bgFile').files[0];
+    const f = bgFromUrl || $('bgFile').files[0];
     if (f) {
       // foto do veículo enviada pelo usuário: só marca onde fica a peça
       SCENES.forEach((id) => this.slotMessage(id, 'Recortando o veículo...'));
@@ -845,16 +846,60 @@ $('bgOpacity').addEventListener('change', () => {
   store.set('bg_opacity_v2', $('bgOpacity').value);
   jobs.forEach((j) => j.renderScenes());
 });
-$('bgFile').addEventListener('change', () => {
+function changeBackdrop() {
   userBackdrop = null;
   jobs.forEach((j) => { j.candidates = null; j.candIdx = -1; if (j.layer) j.nextBackdrop(); });
+}
+$('bgFile').addEventListener('change', () => { bgFromUrl = null; $('bgUrlMsg').textContent = ''; changeBackdrop(); });
+$('bgUrlForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.submitter;
+  btn.disabled = true;
+  $('bgUrlMsg').textContent = 'Baixando a foto do veículo...';
+  try {
+    bgFromUrl = await fetchImageUrl($('bgUrl').value);
+    $('bgFile').value = '';
+    $('bgUrlMsg').textContent = 'Foto do veículo carregada pelo link.';
+    $('bgUrl').value = '';
+    changeBackdrop();
+  } catch (err) {
+    $('bgUrlMsg').textContent = err.message;
+  } finally { btn.disabled = false; }
+});
+
+async function addUrls(urls) {
+  const btn = $('urlForm').querySelector('button');
+  btn.disabled = true;
+  const files = [];
+  for (const u of urls) {
+    status(`Baixando a imagem do link${urls.length > 1 ? ` (${files.length + 1} de ${urls.length})` : ''}...`, false);
+    try { files.push(await fetchImageUrl(u)); } catch (err) { status(err.message, true); }
+  }
+  btn.disabled = false;
+  if (files.length) { $('imgUrl').value = ''; addFiles(files); }
+}
+// aceita vários links separados por espaço ou quebra de linha
+$('urlForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const urls = $('imgUrl').value.split(/\s+/).filter(Boolean);
+  if (urls.length) addUrls(urls);
 });
 
 const drop = $('drop');
 drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); });
+drop.addEventListener('drop', (e) => {
+  e.preventDefault();
+  drop.classList.remove('over');
+  if (e.dataTransfer.files.length) return addFiles(e.dataTransfer.files);
+  // imagem arrastada de outra aba do navegador chega como link
+  const u = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')).split('\n').find((x) => /^https?:/.test(x.trim()));
+  if (u) addUrls([u.trim()]);
+});
 window.addEventListener('paste', (e) => {
   const f = [...(e.clipboardData?.files || [])].filter((x) => x.type.startsWith('image/'));
-  if (f.length) addFiles(f);
+  if (f.length) return addFiles(f);
+  // link colado fora de um campo de texto também vira foto
+  const t = e.clipboardData?.getData('text/plain')?.trim();
+  if (t && /^https?:\/\/\S+$/.test(t) && !e.target.closest?.('input, textarea')) addUrls([t]);
 });
