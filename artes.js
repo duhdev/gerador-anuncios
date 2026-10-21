@@ -1,5 +1,5 @@
 // Fotos 4, 5 e 6: a sequência conta uma história para o comprador.
-// 4. desejo (o produto num ambiente bonito), 5. convicção (benefícios e
+// 4. desejo (o produto em uso na vida real), 5. convicção (benefícios e
 // compatibilidade), 6. certeza (qual é o lado certo).
 import { SIZE, fit, drawWithShadow, mirrored } from './imagem.js';
 
@@ -85,65 +85,38 @@ function cover(ctx, img, x, y, w, h) {
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
-// ---------- 4. ambientada ----------
+// ---------- 4. produto em uso ----------
 
 /**
- * Produto num ambiente bonito, sem texto: a foto que desperta o desejo.
- * scene: foto do ambiente (gerada por IA ou enviada); sem ela, um estúdio escuro.
+ * Cena real de uso (veículo no trânsito, na estrada...). Quando a cena não
+ * tem a peça exata (foto enviada ou gerada sem a peça), ela aparece num
+ * quadro no canto, para o comprador ligar a peça ao uso.
  */
-export function renderAmbient(layer, scene = null) {
+export function renderInUse(layer, scene, inset = true) {
   const { c, ctx } = canvas();
-  const p = fit(layer.width, layer.height, 760, 720, true);
-  const x = Math.round((SIZE - p.w) / 2), base = scene ? 1060 : 960, y = base - p.h;
-  if (scene) {
-    // o ambiente fica levemente desfocado: o produto é o assunto
-    ctx.filter = 'blur(3px) saturate(1.08)';
-    cover(ctx, scene, -12, -12, SIZE + 24, SIZE + 24);
-    ctx.filter = 'none';
-  } else {
-    const g = ctx.createLinearGradient(0, 0, 0, SIZE);
-    g.addColorStop(0, '#1b2740');
-    g.addColorStop(0.62, '#0b1120');
-    g.addColorStop(1, '#05070d');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    // chão com reflexo e um facho de luz vindo de cima
-    const floor = ctx.createLinearGradient(0, base - 40, 0, SIZE);
-    floor.addColorStop(0, 'rgba(255,255,255,0.10)');
-    floor.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = floor;
-    ctx.fillRect(0, base - 40, SIZE, SIZE - base + 40);
-    const beam = ctx.createRadialGradient(SIZE / 2, -200, 50, SIZE / 2, 300, 900);
-    beam.addColorStop(0, 'rgba(255,240,215,0.35)');
-    beam.addColorStop(1, 'rgba(255,240,215,0)');
-    ctx.fillStyle = beam;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    // reflexo do produto no chão
-    ctx.save();
-    ctx.globalAlpha = 0.22;
-    ctx.translate(0, base * 2);
-    ctx.scale(1, -1);
-    ctx.drawImage(layer, x, y, p.w, p.h);
-    ctx.restore();
-    const fade = ctx.createLinearGradient(0, base, 0, base + p.h * 0.5);
-    fade.addColorStop(0, 'rgba(8,12,22,0.1)');
-    fade.addColorStop(1, 'rgba(6,9,16,1)');
-    ctx.fillStyle = fade;
-    ctx.fillRect(0, base, SIZE, SIZE - base);
-  }
-  // luz quente atrás do produto, para ele "saltar" do fundo
-  const glow = ctx.createRadialGradient(SIZE / 2, y + p.h * 0.5, 10, SIZE / 2, y + p.h * 0.5, Math.max(p.w, p.h) * 0.85);
-  glow.addColorStop(0, 'rgba(255,246,228,0.55)');
-  glow.addColorStop(1, 'rgba(255,246,228,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  drawWithShadow(ctx, layer, x, y, p.w, p.h, scene ? 1.1 : 0.9);
-  // vinheta suave
-  const v = ctx.createRadialGradient(SIZE / 2, SIZE * 0.55, SIZE * 0.35, SIZE / 2, SIZE * 0.55, SIZE * 0.8);
+  cover(ctx, scene, 0, 0, SIZE, SIZE);
+  const v = ctx.createRadialGradient(SIZE / 2, SIZE / 2, SIZE * 0.45, SIZE / 2, SIZE / 2, SIZE * 0.78);
   v.addColorStop(0, 'rgba(0,0,0,0)');
-  v.addColorStop(1, 'rgba(0,0,0,0.42)');
+  v.addColorStop(1, 'rgba(0,0,0,0.28)');
   ctx.fillStyle = v;
   ctx.fillRect(0, 0, SIZE, SIZE);
+  if (inset) {
+    const s = 340, x = SIZE - 40 - s, y = SIZE - 40 - s;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 12;
+    ctx.fillStyle = '#fff';
+    rrect(ctx, x, y, s, s, 32);
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 6;
+    rrect(ctx, x - 3, y - 3, s + 6, s + 6, 34);
+    ctx.stroke();
+    const p = fit(layer.width, layer.height, s - 50, s - 50, true);
+    drawWithShadow(ctx, layer, x + (s - p.w) / 2, y + (s - p.h) / 2 - 6, p.w, p.h, 0.6);
+  }
   return c;
 }
 
@@ -330,8 +303,8 @@ export function renderSides(layer, info) {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  drawText(ctx, 'Qual é o lado certo?', SIZE / 2, 48, 1100, 64, { align: 'center', maxLines: 1 });
-  drawText(ctx, 'Veículo visto de cima, com a frente para cima. No Brasil, o motorista fica do lado esquerdo.', SIZE / 2, 130, 1000, 27, { weight: 500, color: GRAY, align: 'center', maxLines: 2, lh: 1.3 });
+  // sem título nem faixa: só o veículo, as duas peças e as setas, centralizados
+  ctx.translate(0, 46);
 
   // qual imagem é de qual lado: a da foto e o espelho dela
   const fotoLado = info.foto || (info.vendido === 'esquerdo' || info.vendido === 'direito' ? info.vendido : null);
@@ -390,13 +363,5 @@ export function renderSides(layer, info) {
     ctx.stroke();
   }
 
-  const msg = info.vendido === 'par' ? 'Este anúncio acompanha os DOIS LADOS'
-    : info.vendido === 'esquerdo' ? 'Este anúncio é do LADO ESQUERDO (motorista)'
-    : info.vendido === 'direito' ? 'Este anúncio é do LADO DIREITO (passageiro)'
-    : 'Confira no título qual lado acompanha o anúncio';
-  ctx.fillStyle = NAVY;
-  rrect(ctx, 40, SIZE - 190, SIZE - 80, 150, 26);
-  ctx.fill();
-  drawText(ctx, msg, SIZE / 2, SIZE - 190 + 46, 1040, 44, { color: '#fff', align: 'center', maxLines: 1 });
   return c;
 }

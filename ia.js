@@ -35,7 +35,8 @@ Responda SOMENTE com um JSON válido (sem markdown), neste formato:
     "descricao": "em português: o veículo compatível (se for peça automotiva) ou o objeto/ambiente onde o produto é usado",
     "busca": "nome curto do veículo ou objeto, só marca e modelo, ex.: 'Renault Master'"
   },
-  "foto_ambiente_en": "prompt in English for an EMPTY, aspirational lifestyle scene where this product would be shown, WITHOUT the product itself and with an empty surface in the foreground center, e.g. 'clean modern auto repair garage, empty dark wooden workbench in the foreground, blurred white Renault Master van in the background, warm cinematic light, shallow depth of field, photorealistic'",
+  "foto_uso_en": "prompt in English for a REALISTIC photo of the product in real everyday use, with the compatible vehicle (or the place where the product is used) as the main subject and the part's position visible, e.g. for a tail light: 'white Renault Master van driving in city traffic at dusk, rear three-quarter view, tail lights glowing red, wet asphalt reflections, realistic photo, DSLR'",
+  "foto_uso_pt": "a mesma cena em português, para pedir no app Gemini",
   "foto_conversao": {
     "titulo": "até 34 caracteres: a promessa principal, o desejo ou o problema resolvido para o comprador (ex.: 'Sua Master segura e bonita de novo'). Sem preço, promoção, frete ou contato",
     "beneficios": ["exatamente 3 benefícios concretos e verdadeiros, até 26 caracteres cada, do mais forte para o mais fraco"],
@@ -156,7 +157,7 @@ export async function generateAd(imageBlob, { key, model, useSearch, extra, onSt
  * Devolve um Blob de imagem.
  */
 export async function generateScene(promptEn, seed = Math.floor(Math.random() * 1e6)) {
-  const p = `${promptEn}, empty foreground, no people, no text, no watermark, high detail, professional photography`;
+  const p = `${promptEn}, realistic photo, no text, no watermark, no logos, high detail`;
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1200&height=1200&nologo=true&seed=${seed}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
@@ -165,6 +166,30 @@ export async function generateScene(promptEn, seed = Math.floor(Math.random() * 
   const blob = await resp.blob();
   if (!blob.type.startsWith('image/')) throw new Error('O gerador não devolveu uma imagem');
   return blob;
+}
+
+/**
+ * Foto do produto em uso feita pelo Gemini (modelo de imagem), com a peça da
+ * foto instalada no veículo. Na maioria das chaves grátis esse modelo não tem
+ * cota; aí dá erro e o app usa outro caminho.
+ */
+export async function generateInUse(productBlob, promptEn, key) {
+  if (!key) throw new Error('sem chave');
+  const img = await blobToBase64(await smallJpeg(productBlob, 1024));
+  const data = await call('gemini-2.5-flash-image', key, {
+    contents: [{ role: 'user', parts: [
+      { inline_data: { mime_type: 'image/jpeg', data: img } },
+      { text: `Create a realistic square photo of this exact part (same shape, colors and details as the attached photo) installed and in real use: ${promptEn}. The part must be on the vehicle, in its correct position and clearly visible. No text, no logos, no watermark.` },
+    ] }],
+    generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1' } },
+  });
+  const part = (data.candidates?.[0]?.content?.parts || []).find((x) => x.inlineData || x.inline_data);
+  const d = part?.inlineData || part?.inline_data;
+  if (!d?.data) throw new Error('O Gemini não devolveu imagem.');
+  const bin = atob(d.data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: d.mimeType || d.mime_type || 'image/png' });
 }
 
 /**

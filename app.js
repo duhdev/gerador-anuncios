@@ -1,6 +1,6 @@
 import { prepareProduct, renderWhite, renderShadow, renderPair, checkPhoto, toBlob } from './imagem.js';
-import { renderAmbient, renderConversion, renderSides } from './artes.js';
-import { generateAd, generateScene, fetchImageUrl } from './ia.js';
+import { renderInUse, renderConversion, renderSides } from './artes.js';
+import { generateAd, generateScene, generateInUse, fetchImageUrl } from './ia.js';
 import { makeZip } from './zip.js';
 import { W, H, buildScenes, makeRenderer, transitionTimes, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden } from './clip.js';
 import { estimateDepth, makeOrbit } from './tresd.js';
@@ -18,7 +18,7 @@ const SLOTS = [
   { id: 'branco', label: 'Fundo branco (principal)', png: true },
   { id: 'sombra', label: 'Com sombra', png: true },
   { id: 'par', label: 'Par do produto' },
-  { id: 'ambiente', label: 'Ambientada (desejo)' },
+  { id: 'ambiente', label: 'Em uso na vida real (desejo)' },
   { id: 'conversao', label: 'Benefícios (convencer)' },
   { id: 'lados', label: 'Qual é o lado (certeza)' },
 ];
@@ -26,7 +26,8 @@ const ARTS = ['ambiente', 'conversao', 'lados'];
 
 const jobs = [];
 let queue = Promise.resolve();
-let bgFromUrl = null;      // foto do ambiente vinda de um link
+let bgFromUrl = null;      // foto do veículo em uso vinda de um link
+let geminiImageOff = false; // a chave não tem cota para o modelo de imagem do Gemini
 
 // ---------- configurações ----------
 
@@ -121,9 +122,24 @@ class Job {
     this.checkEl = el('div', { class: 'checks' }, el('p', { class: 'empty' }, 'Aparece quando as fotos ficarem prontas.'));
     this.adEl = el('div', {}, el('p', { class: 'empty' }, 'O anúncio aparece aqui assim que a foto principal ficar pronta.'));
     this.regenBtn = el('button', { type: 'button', class: 'ghost' }, 'Gerar de novo');
-    this.bgBtn = el('button', { type: 'button', class: 'ghost' }, 'Trocar ambiente da foto 4');
+    this.bgBtn = el('button', { type: 'button', class: 'ghost' }, 'Gerar outra cena (foto 4)');
+    this.usePromptBtn = el('button', { type: 'button', class: 'ghost' }, 'Copiar pedido da foto 4 para o app Gemini');
+    this.usePromptBtn.onclick = async () => {
+      try { await navigator.clipboard.writeText(this.inUsePromptPt()); toast('Pedido copiado. Cole no app Gemini e anexe a foto 1 (fundo branco).'); }
+      catch { toast('Não consegui copiar. Tente de novo.'); }
+    };
+    this.useFile = el('input', { type: 'file', accept: 'image/*', hidden: '' });
+    this.useFile.onchange = async () => {
+      const f = this.useFile.files[0];
+      this.useFile.value = '';
+      if (!f) return;
+      this.ownScene = { bmp: await createImageBitmap(f), inset: false };
+      this.renderAmbient(false);
+    };
+    this.useBtn = el('button', { type: 'button', class: 'ghost' }, 'Usar minha imagem na foto 4');
+    this.useBtn.onclick = () => this.useFile.click();
     this.regenBtn.onclick = () => this.runAd().then(() => this.ad && this.renderArts(false));
-    this.bgBtn.onclick = () => this.renderAmbient(true);
+    this.bgBtn.onclick = () => { this.ownScene = null; this.renderAmbient(true); };
     this.slotEls = {};
     SLOTS.forEach((s, i) => {
       const fig = el('figure', { class: 'card slot' },
@@ -142,7 +158,7 @@ class Job {
 
     // abas
     const panes = {
-      fotos: ['Fotos', el('div', {}, el('div', { class: 'panel-actions' }, this.bgBtn), this.grid)],
+      fotos: ['Fotos', el('div', {}, el('div', { class: 'panel-actions' }, this.bgBtn, this.usePromptBtn, this.useBtn, this.useFile), this.grid)],
       anuncio: ['Anúncio', el('div', {}, el('div', { class: 'panel-actions' }, this.regenBtn), this.adEl)],
       video: ['Vídeo para Clips', this.buildClipUi()],
       conferencia: ['Conferência', this.checkEl],
@@ -314,31 +330,51 @@ class Job {
     await this.setSlot('lados', renderSides(this.layer, info));
   }
 
-  // Foto 4: ambiente enviado pelo usuário, gerado por IA grátis ou, sem internet, estúdio
+  inUsePromptPt() {
+    const cena = this.ad?.foto_uso_pt || `o veículo compatível${this.ad?.fundo?.descricao ? ` (${this.ad.fundo.descricao})` : ''} rodando no trânsito da cidade, com a peça bem visível`;
+    return `Crie uma foto realista e quadrada (1:1) da peça da foto anexada, exatamente igual (mesmo formato, cores e detalhes), instalada no lugar certo e em uso na vida real: ${cena}. A peça precisa aparecer com clareza. Sem texto, sem logotipos, sem marca d'água.`;
+  }
+
+  // Foto 4: o produto em uso na vida real. Ordem: imagem do usuário; Gemini
+  // com a peça instalada (se a chave tiver cota de imagem); cena por IA grátis
+  // com a peça num quadro; senão, aviso com o pedido para o app Gemini.
   async renderAmbient(newScene) {
     if (!this.layer) return;
-    const f = bgFromUrl || $('bgFile').files[0];
-    this.slotMessage('ambiente', 'Criando o ambiente com IA...');
-    let scene = null;
-    if (f) {
-      scene = await createImageBitmap(f).catch(() => null);
-    } else {
+    const g = bgFromUrl || $('bgFile').files[0];
+    let use = this.ownScene || (g ? { bmp: await createImageBitmap(g).catch(() => null), inset: true } : null);
+    if (!use?.bmp) {
       if (newScene || !this.scene) {
-        const veic = this.ad?.fundo?.busca || '';
-        const prompt = this.ad?.foto_ambiente_en
-          || `clean modern bright workshop, empty dark wooden workbench in the foreground${veic ? `, blurred ${veic} in the background` : ''}, warm cinematic light, shallow depth of field, photorealistic`;
-        try {
-          this.status('Criando o ambiente da foto 4 com IA...');
-          this.scene = await createImageBitmap(await generateScene(prompt));
-        } catch (e) {
-          console.warn('Ambiente por IA indisponível', e);
-          this.scene = newScene ? this.scene : null;
-          if (newScene) toast('O gerador de ambientes não respondeu agora. Tente de novo em instantes.');
+        this.slotMessage('ambiente', 'Criando a foto do produto em uso...');
+        const veic = this.ad?.fundo?.descricao || this.ad?.fundo?.busca || $('extraInfo').value.trim();
+        const prompt = this.ad?.foto_uso_en
+          || `${veic || 'the compatible vehicle'} driving in city traffic at dusk, the part clearly visible, realistic photo, DSLR`;
+        const key = store.get('gemini_key', '') || $('apiKey').value.trim();
+        this.scene = null;
+        if (!geminiImageOff && key) {
+          try {
+            this.status('O Gemini está criando a foto do produto em uso...');
+            this.scene = { bmp: await createImageBitmap(await generateInUse(this.whiteBlob, prompt, key)), inset: false };
+          } catch (e) {
+            console.warn('Imagem do Gemini indisponível', e);
+            if (e.status === 429 || e.status === 403 || e.status === 404 || e.status === 400) geminiImageOff = true;
+          }
+        }
+        if (!this.scene) {
+          try {
+            this.status('Criando a cena do produto em uso com IA grátis...');
+            this.scene = { bmp: await createImageBitmap(await generateScene(prompt)), inset: true };
+          } catch (e) {
+            console.warn('Cena por IA grátis indisponível', e);
+          }
         }
       }
-      scene = this.scene;
+      use = this.scene;
     }
-    await this.setSlot('ambiente', renderAmbient(this.layer, scene));
+    if (!use?.bmp) {
+      this.slotMessage('ambiente', 'As IAs de imagem grátis não responderam agora. Clique em "Gerar outra cena", ou use "Copiar pedido da foto 4 para o app Gemini", gere a imagem lá e envie em "Usar minha imagem na foto 4".');
+      return;
+    }
+    await this.setSlot('ambiente', renderInUse(this.layer, use.bmp, use.inset));
   }
 
   // ---------- vídeo para Clips ----------
@@ -838,11 +874,11 @@ $('bgUrlForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = e.submitter;
   btn.disabled = true;
-  $('bgUrlMsg').textContent = 'Baixando a foto do ambiente...';
+  $('bgUrlMsg').textContent = 'Baixando a foto...';
   try {
     bgFromUrl = await fetchImageUrl($('bgUrl').value);
     $('bgFile').value = '';
-    $('bgUrlMsg').textContent = 'Foto do ambiente carregada pelo link.';
+    $('bgUrlMsg').textContent = 'Foto carregada pelo link.';
     $('bgUrl').value = '';
     changeBackdrop();
   } catch (err) {
