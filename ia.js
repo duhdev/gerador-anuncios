@@ -33,8 +33,19 @@ Responda SOMENTE com um JSON válido (sem markdown), neste formato:
   "clip_legendas": ["5 frases curtas (até 32 caracteres cada) para as legendas de um vídeo vertical do Mercado Livre Clips: 1ª chama atenção para o produto, depois benefícios e diferenciais reais, a última convida a ver o anúncio. Sem preço, sem promoção, sem frete, sem contato, sem emojis"],
   "fundo": {
     "descricao": "em português: o veículo compatível (se for peça automotiva) ou o objeto/ambiente onde o produto é usado",
-    "busca": "nome curto para achar uma foto real disso no Wikimedia Commons, só marca e modelo, ex.: 'Volkswagen Amarok' ou 'Renault Master III'",
-    "prompt_en": "prompt in English for a studio photo of that vehicle or object, e.g. 'white Renault Master van 2014, three-quarter rear view, full vehicle visible, studio product photo, plain white background, no text'"
+    "busca": "nome curto do veículo ou objeto, só marca e modelo, ex.: 'Renault Master'"
+  },
+  "foto_ambiente_en": "prompt in English for an EMPTY, aspirational lifestyle scene where this product would be shown, WITHOUT the product itself and with an empty surface in the foreground center, e.g. 'clean modern auto repair garage, empty dark wooden workbench in the foreground, blurred white Renault Master van in the background, warm cinematic light, shallow depth of field, photorealistic'",
+  "foto_conversao": {
+    "titulo": "até 34 caracteres: a promessa principal, o desejo ou o problema resolvido para o comprador (ex.: 'Sua Master segura e bonita de novo'). Sem preço, promoção, frete ou contato",
+    "beneficios": ["exatamente 3 benefícios concretos e verdadeiros, até 26 caracteres cada, do mais forte para o mais fraco"],
+    "compatibilidade": "até 40 caracteres: veículos e anos compatíveis (ex.: 'Renault Master 2014 a 2022') ou para que serve; vazio se não souber",
+    "selo": "até 16 caracteres, ex.: 'Peça nova', só se o vendedor informou ou dá para ver na foto; senão vazio"
+  },
+  "lado": {
+    "vendido": "lado que este anúncio vende: 'esquerdo', 'direito', 'par' (os dois), 'indefinido' (peça com lado, mas não dá para saber) ou 'nao_se_aplica' (produto sem lado). No Brasil o lado esquerdo é o do motorista; LE = esquerdo, LD = direito",
+    "foto": "de qual lado do veículo é a peça mostrada na foto: 'esquerdo', 'direito' ou 'indefinido'",
+    "posicao": "onde a peça fica no veículo: 'dianteira', 'traseira', 'lateral' ou 'nao_se_aplica'"
   },
   "foto": {
     "tem_texto_logo_ou_marca_dagua": false,
@@ -141,13 +152,15 @@ export async function generateAd(imageBlob, { key, model, useSearch, extra, onSt
 }
 
 /**
- * Gera grátis (sem chave) a foto do veículo/ambiente para o fundo, pelo Pollinations.ai.
+ * Gera grátis (sem chave) a foto do ambiente da foto 4, pelo Pollinations.ai.
  * Devolve um Blob de imagem.
  */
-export async function generateBackdrop(promptEn, seed = Math.floor(Math.random() * 1e6)) {
-  const p = `${promptEn}, full object visible, centered, plain white background, high detail, no text, no watermark`;
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=768&nologo=true&seed=${seed}`;
-  const resp = await fetch(url);
+export async function generateScene(promptEn, seed = Math.floor(Math.random() * 1e6)) {
+  const p = `${promptEn}, empty foreground, no people, no text, no watermark, high detail, professional photography`;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1200&height=1200&nologo=true&seed=${seed}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90000);
+  const resp = await fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
   if (!resp.ok) throw new Error(`Gerador de imagem respondeu ${resp.status}`);
   const blob = await resp.blob();
   if (!blob.type.startsWith('image/')) throw new Error('O gerador não devolveu uma imagem');

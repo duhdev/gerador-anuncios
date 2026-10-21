@@ -503,7 +503,7 @@ export function buildScenes({ layer, orbit, angles = [], photos = {}, captions =
   if (photos.frente) add(sceneVehicle(photos.frente, color, vehicle ? `Compatível: ${vehicle}` : 'Encaixe original', 1), 1);
   add(sceneLoupe(main, color, 'Acabamento em detalhe'), 1.1);
   angles.forEach((a, i) => add(sceneAngle(a, color, 'Outro ângulo', i * 1.7), 0.9));
-  if (photos.lado) add(sceneVehicle(photos.lado, color, 'Onde a peça é instalada', -1), 1);
+  if (photos.lado) add(sceneVehicle(photos.lado, color, 'Confira o lado certo', -1), 1);
   add(scenePair(main, mirror, color, [mirror ? 'Lado direito e esquerdo' : 'Também em par']), 1.1);
   add(sceneOutro(main, cta, color), 1.2);
   return list;

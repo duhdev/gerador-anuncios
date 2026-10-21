@@ -88,18 +88,15 @@
             <label class="switch"><input id="mirrorPair" type="checkbox" checked><span></span> Foto do par com lado direito e esquerdo</label>
           </div>
           <div>
-            <h4>Veículo ao fundo (fotos 4 e 5)</h4>
-            <label class="extra">Foto do veículo (opcional; sem ela o app busca uma foto real)
+            <h4>Ambiente da foto 4</h4>
+            <label class="extra">Foto do ambiente (opcional; sem ela a IA cria um ambiente)
               <input id="bgFile" type="file" accept="image/*">
             </label>
             <form id="bgUrlForm" class="url-row">
-              <input id="bgUrl" type="url" placeholder="Ou cole o link da foto do veículo" autocomplete="off">
+              <input id="bgUrl" type="url" placeholder="Ou cole o link da foto do ambiente" autocomplete="off">
               <button type="submit" class="ghost">Usar link</button>
             </form>
             <span id="bgUrlMsg" class="hint"></span>
-            <label class="extra">Veículo visível: <b id="bgOpacityVal">100%</b>
-              <input id="bgOpacity" type="range" min="30" max="100" value="100">
-            </label>
           </div>
         </div>
       </details>

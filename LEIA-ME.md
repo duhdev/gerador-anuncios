@@ -12,20 +12,21 @@ App web que transforma a foto do produto em fotos prontas para o Mercado Livre e
 Mac/Linux: rode `python3 servidor.py` dentro da pasta.
 
 ## O que ele faz
-**Fotos (5 imagens, todas 1200x1200 em JPG)**
-1. Fundo branco (foto principal).
-2. Fundo branco com sombra.
+**Fotos (6 imagens, todas 1200x1200; as fotos 1 e 2 em PNG com fundo #FFFFFF puro)**
+As fotos seguem uma história para o comprador: atenção (1 a 3), desejo (4), convicção (5) e certeza (6).
+1. Fundo branco puro (foto principal).
+2. Fundo branco puro com sombra.
 3. Par do produto: lado direito e lado esquerdo (a segunda peça é o espelho da primeira), lado a lado e simétricos. Desmarque a opção se a peça não tiver lado.
-4. Veículo compatível inteiro ao fundo e a peça grande na frente, em destaque.
-5. Veículo à esquerda com um círculo marcando onde a peça vai, ligado à peça à direita.
+4. Ambientada (desejo): a peça num ambiente bonito, com luz quente e fundo desfocado, sem texto. O ambiente é criado por IA grátis (Pollinations.ai); se você enviar uma foto de ambiente em Ajustes, ela é usada. Sem internet para a IA, sai num estúdio escuro com reflexo. "Trocar ambiente da foto 4" cria outro.
+5. Benefícios (convencer): a peça grande com um círculo de destaque, uma promessa curta no alto, 3 benefícios com marcação e uma faixa "Compatível com". Usa princípios conhecidos de leitura e decisão: um ponto de foco só, leitura de cima para baixo e da esquerda para a direita, no máximo 3 itens (fáceis de lembrar) e a compatibilidade em destaque (é a maior dúvida de quem compra peça). Os textos vêm do anúncio da IA, sem preço, promoção, frete ou contato. Nenhuma imagem garante a venda; confira os textos antes de publicar.
+6. Qual é o lado (certeza): o veículo visto de cima com o volante do lado do motorista, a peça do lado esquerdo e a do lado direito (espelho uma da outra) e setas até a posição certa no veículo. O lado do anúncio ganha a marca "ESTE ANÚNCIO" (ou "ACOMPANHA" quando é o par). O lado e a posição vêm da IA e do que você escrever em "Informações extras" (ex.: "lado direito", "LD"). Para produtos sem lado, a foto 6 não é gerada.
 
 Como funciona:
-- Pode mandar várias fotos de uma vez: cada foto vira um anúncio completo. "Baixar tudo (ZIP)" baixa uma pasta por produto com as 5 fotos e o anuncio.txt.
+- Pode mandar várias fotos de uma vez: cada foto vira um anúncio completo. "Baixar tudo (ZIP)" baixa uma pasta por produto com as 6 fotos e o anuncio.txt.
 - Super-resolução com Real-ESRGAN (IA que reconstrói os detalhes, não só estica a imagem). Roda no seu PC: usa a placa de vídeo quando o navegador permite (WebGPU) e o processador nos outros casos. Depois da ampliação, o recorte do fundo é refeito na imagem já nítida, para a borda da peça ficar firme.
 - Cada pedaço ampliado é conferido; se a placa de vídeo errar algum pedaço, aquele pedaço usa a ampliação comum (evita faixas pretas).
 - Cores e contraste são realçados de leve, sem estourar os brancos (desligue em "Realçar cores e contraste" se preferir).
-- Veículo das fotos 4 e 5: o Gemini identifica o veículo compatível, o app busca fotos reais dele no Wikimedia Commons (grátis) e o Gemini escolhe a que mostra o modelo certo, inteiro, no ângulo da peça, e marca onde a peça fica. Se nenhuma servir, as fotos 4 e 5 ficam vazias com um aviso (melhor do que usar um veículo errado). Para garantir, envie sua própria foto do veículo no campo "Foto do veículo ou ambiente".
-- "Trocar veículo do fundo" passa para a próxima foto aprovada. O controle "Veículo ao fundo" deixa o veículo mais claro se quiser (padrão: 100%, inteiro e nítido).
+- O Mercado Livre exige fundo branco e nenhum texto só na foto principal; as fotos 5 e 6 têm textos explicativos, use-as como fotos secundárias.
 - Para peças automotivas, escreva o veículo em "Informações extras" (ex.: Renault Master 2014 a 2022) para acertar o modelo.
 
 **Conferência para o Mercado Livre** (aparece em cada produto)

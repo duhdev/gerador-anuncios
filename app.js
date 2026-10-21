@@ -1,8 +1,6 @@
-import {
-  prepareProduct, prepareBackdrop, renderWhite, renderShadow, renderPair,
-  renderSceneFront, renderSceneSide, checkPhoto, toBlob, setPartBox,
-} from './imagem.js';
-import { generateAd, generateBackdrop, searchBackdrops, fetchImage, fetchImageUrl, pickBackdrops } from './ia.js';
+import { prepareProduct, renderWhite, renderShadow, renderPair, checkPhoto, toBlob } from './imagem.js';
+import { renderAmbient, renderConversion, renderSides } from './artes.js';
+import { generateAd, generateScene, fetchImageUrl } from './ia.js';
 import { makeZip } from './zip.js';
 import { W, H, buildScenes, makeRenderer, transitionTimes, makeSoundtrack, recordClip, defaultCaptions, defaultScript, forbidden } from './clip.js';
 import { estimateDepth, makeOrbit } from './tresd.js';
@@ -17,18 +15,18 @@ const store = {
 };
 
 const SLOTS = [
-  { id: 'branco', label: 'Fundo branco (principal)' },
-  { id: 'sombra', label: 'Com sombra' },
+  { id: 'branco', label: 'Fundo branco (principal)', png: true },
+  { id: 'sombra', label: 'Com sombra', png: true },
   { id: 'par', label: 'Par do produto' },
-  { id: 'fundo-frente', label: 'Veículo ao fundo (frente)' },
-  { id: 'fundo-lado', label: 'Veículo ao fundo (ao lado)' },
+  { id: 'ambiente', label: 'Ambientada (desejo)' },
+  { id: 'conversao', label: 'Benefícios (convencer)' },
+  { id: 'lados', label: 'Qual é o lado (certeza)' },
 ];
-const SCENES = ['fundo-frente', 'fundo-lado'];
+const ARTS = ['ambiente', 'conversao', 'lados'];
 
 const jobs = [];
 let queue = Promise.resolve();
-let userBackdrop = null;   // foto de fundo enviada (preparada uma vez)
-let bgFromUrl = null;      // foto do veículo vinda de um link
+let bgFromUrl = null;      // foto do ambiente vinda de um link
 
 // ---------- configurações ----------
 
@@ -39,8 +37,6 @@ function loadConfig() {
   $('model').value = store.get('gemini_model', 'gemini-2.5-flash');
   $('useSearch').checked = store.get('use_search', '1') === '1';
   for (const [id, key] of Object.entries(CHECKS)) $(id).checked = store.get(key, id === 'maxSharp' ? '0' : '1') === '1';
-  $('bgOpacity').value = store.get('bg_opacity_v2', '100');
-  $('bgOpacityVal').textContent = `${$('bgOpacity').value}%`;
   if (!$('apiKey').value) $('config').open = true;
 }
 
@@ -64,8 +60,6 @@ function saveConfig() {
   toast($('apiKey').value.trim() ? 'Configurações salvas.' : 'Salvo, mas falta a chave.');
   if ($('apiKey').value.trim()) $('config').open = false;
 }
-
-const opacity = () => Number($('bgOpacity').value) / 100;
 
 function status(msg, err = false) {
   const s = $('status');
@@ -115,10 +109,7 @@ class Job {
     this.blobs = {};
     this.urls = {};
     this.layer = null;
-    this.backdrop = null;
-    this.candidates = null;  // [{ blob, caixa }] fotos do veículo aprovadas
-    this.candIdx = -1;
-    this.partBox = null;     // onde a peça fica no veículo do fundo
+    this.scene = null;       // foto do ambiente da foto 4
     this.ad = null;
     this.prep = null;
     this.buildUi();
@@ -130,9 +121,9 @@ class Job {
     this.checkEl = el('div', { class: 'checks' }, el('p', { class: 'empty' }, 'Aparece quando as fotos ficarem prontas.'));
     this.adEl = el('div', {}, el('p', { class: 'empty' }, 'O anúncio aparece aqui assim que a foto principal ficar pronta.'));
     this.regenBtn = el('button', { type: 'button', class: 'ghost' }, 'Gerar de novo');
-    this.bgBtn = el('button', { type: 'button', class: 'ghost' }, 'Trocar veículo do fundo');
-    this.regenBtn.onclick = () => this.runAd();
-    this.bgBtn.onclick = () => this.nextBackdrop();
+    this.bgBtn = el('button', { type: 'button', class: 'ghost' }, 'Trocar ambiente da foto 4');
+    this.regenBtn.onclick = () => this.runAd().then(() => this.ad && this.renderArts(false));
+    this.bgBtn.onclick = () => this.renderAmbient(true);
     this.slotEls = {};
     SLOTS.forEach((s, i) => {
       const fig = el('figure', { class: 'card slot' },
@@ -143,7 +134,7 @@ class Job {
     });
     // etapas mostradas no topo do cartão
     this.stepEls = {};
-    const steps = [['foto', 'Fotos'], ['anuncio', 'Anúncio'], ['veiculo', 'Veículo'], ['video', 'Vídeo']];
+    const steps = [['foto', 'Fotos'], ['anuncio', 'Anúncio'], ['artes', 'Fotos 4 a 6'], ['video', 'Vídeo']];
     const bar = el('div', { class: 'steps-bar' }, steps.map(([k, n]) => (this.stepEls[k] = el('span', { class: 'stp' }, n))));
     this.titleEl = el('h2', {}, this.file.name);
     const thumb = el('img', { class: 'thumb', alt: '' });
@@ -209,7 +200,7 @@ class Job {
   }
 
   async setSlot(id, cnv) {
-    const blob = await toBlob(cnv);
+    const blob = await (SLOTS.find((s) => s.id === id).png ? toBlob(cnv, 'image/png') : toBlob(cnv));
     if (this.urls[id]) URL.revokeObjectURL(this.urls[id]);
     const url = URL.createObjectURL(blob);
     this.blobs[id] = blob;
@@ -224,19 +215,14 @@ class Job {
   }
 
   fileName(id) {
-    return `${this.base}-${SLOTS.findIndex((s) => s.id === id) + 1}-${id}.jpg`;
+    const i = SLOTS.findIndex((s) => s.id === id);
+    return `${this.base}-${i + 1}-${id}.${SLOTS[i].png ? 'png' : 'jpg'}`;
   }
 
   async renderPair() {
     if (this.layer) await this.setSlot('par', renderPair(this.layer, $('mirrorPair').checked));
   }
 
-  async renderScenes() {
-    if (!this.layer || !this.backdrop) return;
-    setPartBox(this.backdrop, this.partBox);
-    await this.setSlot('fundo-frente', renderSceneFront(this.layer, this.backdrop, opacity()));
-    await this.setSlot('fundo-lado', renderSceneSide(this.layer, this.backdrop, opacity()));
-  }
 
   async run() {
     this.step('foto', 'work');
@@ -261,11 +247,9 @@ class Job {
       return;
     }
 
-    SCENES.forEach((id) => this.slotMessage(id, 'Aguardando a IA identificar o veículo...'));
+    ARTS.forEach((id) => this.slotMessage(id, 'Aguardando o anúncio da IA...'));
     await this.runAd();
-    this.step('veiculo', 'work');
-    await this.nextBackdrop();
-    this.step('veiculo', this.blobs['fundo-frente'] ? 'done' : 'fail');
+    await this.renderArts(true);
     this.fillCaptions();
     this.clipBtn.disabled = this.previewBtn.disabled = false;
     if (this.ad) this.status('Pronto! Confira os campos marcados com [CONFIRMAR] antes de publicar.', false, false);
@@ -273,83 +257,88 @@ class Job {
     updateBatchBar();
   }
 
-  // ---------- fundo com veículo ----------
+  // ---------- fotos 4, 5 e 6: a história do anúncio ----------
 
-  aiOpts() {
+  // lado e posição: da IA; sem ela, das informações extras e do título
+  sideInfo() {
+    const l = this.ad?.lado || {};
+    const txt = `${$('extraInfo').value} ${this.ad?.titulo || ''} ${this.ad?.produto_identificado || ''}`.toLowerCase();
+    const one = (v, ok) => (ok.includes(v) ? v : null);
+    let vendido = one(l.vendido, ['esquerdo', 'direito', 'par', 'indefinido', 'nao_se_aplica']);
+    if (!vendido || vendido === 'indefinido') {
+      vendido = /\bpar\b|os dois lados|direito e esquerdo|esquerdo e direito/.test(txt) ? 'par'
+        : /esquerd|\ble\b|motorista/.test(txt) ? 'esquerdo'
+        : /direit|\bld\b|passageiro/.test(txt) ? 'direito' : vendido;
+    }
+    let posicao = one(l.posicao, ['dianteira', 'traseira', 'lateral', 'nao_se_aplica']);
+    if (!posicao) {
+      posicao = /lanterna|traseir|para-choque tras/.test(txt) ? 'traseira'
+        : /farol|dianteir|milha|pisca/.test(txt) ? 'dianteira'
+        : /retrovisor|espelho|lateral/.test(txt) ? 'lateral' : null;
+    }
     return {
-      key: store.get('gemini_key', '') || $('apiKey').value.trim(),
-      model: store.get('gemini_model', '') || $('model').value.trim() || 'gemini-2.5-flash',
-      vehicle: this.ad?.fundo?.descricao || $('extraInfo').value.trim(),
-      part: this.ad?.produto_identificado || '',
+      vendido: ['esquerdo', 'direito', 'par'].includes(vendido) ? vendido : null,
+      foto: one(l.foto, ['esquerdo', 'direito']),
+      posicao,
+      semLado: vendido === 'nao_se_aplica' || posicao === 'nao_se_aplica' || !posicao,
     };
   }
 
-  async nextBackdrop() {
+  convInfo() {
+    const f = this.ad?.foto_conversao;
+    if (!f) return null;
+    const clean = (t, n) => (t && !forbidden(t) ? String(t).trim().slice(0, n) : '');
+    const beneficios = (f.beneficios || []).map((b) => clean(b, 40)).filter(Boolean).slice(0, 3);
+    const titulo = clean(f.titulo, 48) || clean(this.ad.clip_legendas?.[0], 48);
+    if (!titulo || !beneficios.length) return null;
+    return { titulo, beneficios, compatibilidade: clean(f.compatibilidade, 60), selo: clean(f.selo, 18) };
+  }
+
+  async renderArts(withAmbient = true) {
+    if (!this.layer) return;
+    this.step('artes', 'work');
+    const conv = this.convInfo();
+    if (conv) await this.setSlot('conversao', renderConversion(this.layer, conv));
+    else this.slotMessage('conversao', this.ad ? 'A IA não mandou os benefícios. Clique em "Gerar de novo" na aba Anúncio.' : 'Esta foto usa os benefícios escritos pela IA. Gere o anúncio para montá-la.');
+    await this.renderSidesSlot();
+    if (withAmbient) await this.renderAmbient(false);
+    this.step('artes', this.blobs.ambiente && this.blobs.conversao ? 'done' : 'fail');
+  }
+
+  async renderSidesSlot() {
+    const info = this.sideInfo();
+    if (info.semLado) {
+      this.slotMessage('lados', 'Este produto não tem lado (direito/esquerdo), então esta foto não é necessária. Se tiver, escreva o lado e a peça em "Informações extras".');
+      return;
+    }
+    await this.setSlot('lados', renderSides(this.layer, info));
+  }
+
+  // Foto 4: ambiente enviado pelo usuário, gerado por IA grátis ou, sem internet, estúdio
+  async renderAmbient(newScene) {
     if (!this.layer) return;
     const f = bgFromUrl || $('bgFile').files[0];
+    this.slotMessage('ambiente', 'Criando o ambiente com IA...');
+    let scene = null;
     if (f) {
-      // foto do veículo enviada pelo usuário: só marca onde fica a peça
-      SCENES.forEach((id) => this.slotMessage(id, 'Recortando o veículo...'));
-      userBackdrop = userBackdrop || { blob: f, canvas: await prepareBackdrop(f, (m) => this.status(m)) };
-      this.backdrop = userBackdrop.canvas;
-      const pick = await pickBackdrops([f], this.whiteBlob, this.aiOpts()).catch(() => null);
-      this.partBox = pick?.[0]?.caixa || null;
-      return this.renderScenes();
-    }
-
-    const query = this.ad?.fundo?.busca || $('extraInfo').value.trim();
-    if (this.candidates === null) {
-      SCENES.forEach((id) => this.slotMessage(id, 'Procurando fotos do veículo...'));
-      this.candidates = [];
-      try {
-        this.status(`Procurando fotos de "${query}"...`);
-        const urls = (await searchBackdrops(query)).slice(0, 8);
-        const blobs = (await Promise.all(urls.map((u) => fetchImage(u).catch(() => null)))).filter(Boolean);
-        if (blobs.length) {
-          this.status('A IA está escolhendo a foto do veículo certo...');
-          const picks = await pickBackdrops(blobs, this.whiteBlob, this.aiOpts());
-          this.candidates = picks
-            ? picks.map((p) => ({ blob: blobs[p.i], caixa: p.caixa }))
-            : blobs.map((blob) => ({ blob, caixa: null }));
+      scene = await createImageBitmap(f).catch(() => null);
+    } else {
+      if (newScene || !this.scene) {
+        const veic = this.ad?.fundo?.busca || '';
+        const prompt = this.ad?.foto_ambiente_en
+          || `clean modern bright workshop, empty dark wooden workbench in the foreground${veic ? `, blurred ${veic} in the background` : ''}, warm cinematic light, shallow depth of field, photorealistic`;
+        try {
+          this.status('Criando o ambiente da foto 4 com IA...');
+          this.scene = await createImageBitmap(await generateScene(prompt));
+        } catch (e) {
+          console.warn('Ambiente por IA indisponível', e);
+          this.scene = newScene ? this.scene : null;
+          if (newScene) toast('O gerador de ambientes não respondeu agora. Tente de novo em instantes.');
         }
-      } catch (e) {
-        console.warn('Busca de fotos falhou', e);
       }
+      scene = this.scene;
     }
-    SCENES.forEach((id) => this.slotMessage(id, 'Montando a foto com o veículo...'));
-    for (let tries = 0; tries < this.candidates.length; tries++) {
-      this.candIdx = (this.candIdx + 1) % this.candidates.length;
-      const cand = this.candidates[this.candIdx];
-      try {
-        this.status('Recortando o veículo...');
-        cand.canvas = cand.canvas || await prepareBackdrop(cand.blob, (m) => this.status(m));
-        if (cand.canvas.width < 200) throw new Error('recorte pequeno demais');
-        this.backdrop = cand.canvas;
-        this.partBox = cand.caixa;
-        return this.renderScenes();
-      } catch (e) {
-        console.warn('Foto do veículo descartada', e);
-      }
-    }
-    // nenhuma foto real serviu: tenta gerar com IA de imagem gratuita
-    const prompt = this.ad?.fundo?.prompt_en;
-    if (prompt && !this.triedGen) {
-      this.triedGen = true;
-      try {
-        this.status('Gerando a imagem do veículo com IA...');
-        const blob = await generateBackdrop(prompt);
-        const pick = await pickBackdrops([blob], this.whiteBlob, this.aiOpts()).catch(() => null);
-        if (pick && !pick.length) throw new Error('veículo gerado não confere');
-        this.candidates.push({ blob, caixa: pick?.[0]?.caixa || null });
-        return this.nextBackdrop();
-      } catch (e) {
-        console.warn('Geração do fundo falhou', e);
-      }
-    }
-    SCENES.forEach((id) => this.slotMessage(id,
-      query
-        ? `Não achei uma foto confiável de "${query}". Envie uma foto do veículo no campo "Foto do veículo ou ambiente" para montar estas duas fotos.`
-        : 'Escreva o veículo em "Informações extras" ou envie uma foto dele no campo "Foto do veículo ou ambiente".'));
+    await this.setSlot('ambiente', renderAmbient(this.layer, scene));
   }
 
   // ---------- vídeo para Clips ----------
@@ -525,7 +514,7 @@ class Job {
   async clipRenderer() {
     const msg = (m) => { this.clipMsg.textContent = m; };
     const load = async (id) => (this.blobs[id] ? createImageBitmap(this.blobs[id]) : null);
-    const photos = { sombra: await load('sombra'), par: await load('par'), frente: await load('fundo-frente'), lado: await load('fundo-lado') };
+    const photos = { sombra: await load('sombra'), par: await load('par'), frente: await load('ambiente'), lado: await load('lados') };
     this.main = this.main?.layer === this.layer ? this.main : { layer: this.layer };
     msg('Preparando o giro 3D...');
     const orbit = await this.orbitFor(this.main);
@@ -724,7 +713,7 @@ class Job {
       this.badge('anuncio', '!', true);
       this.status(this.adError, true);
       const retry = el('button', { type: 'button' }, 'Tentar de novo');
-      retry.onclick = () => this.runAd().then(() => { if (this.ad) this.status('Anúncio gerado.', false, false); });
+      retry.onclick = () => this.runAd().then(() => { if (this.ad) { this.status('Anúncio gerado.', false, false); this.renderArts(false); } });
       const cfg = el('button', { type: 'button', class: 'ghost' }, 'Abrir configurações da IA');
       cfg.onclick = openConfig;
       this.adEl.replaceChildren(el('div', { class: 'err-box' },
@@ -841,25 +830,19 @@ for (const [id, key] of Object.entries(CHECKS)) {
   $(id).addEventListener('change', () => store.set(key, $(id).checked ? '1' : '0'));
 }
 $('mirrorPair').addEventListener('change', () => jobs.forEach((j) => j.renderPair()));
-$('bgOpacity').addEventListener('input', () => { $('bgOpacityVal').textContent = `${$('bgOpacity').value}%`; });
-$('bgOpacity').addEventListener('change', () => {
-  store.set('bg_opacity_v2', $('bgOpacity').value);
-  jobs.forEach((j) => j.renderScenes());
-});
 function changeBackdrop() {
-  userBackdrop = null;
-  jobs.forEach((j) => { j.candidates = null; j.candIdx = -1; if (j.layer) j.nextBackdrop(); });
+  jobs.forEach((j) => j.layer && j.renderAmbient(false));
 }
 $('bgFile').addEventListener('change', () => { bgFromUrl = null; $('bgUrlMsg').textContent = ''; changeBackdrop(); });
 $('bgUrlForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = e.submitter;
   btn.disabled = true;
-  $('bgUrlMsg').textContent = 'Baixando a foto do veículo...';
+  $('bgUrlMsg').textContent = 'Baixando a foto do ambiente...';
   try {
     bgFromUrl = await fetchImageUrl($('bgUrl').value);
     $('bgFile').value = '';
-    $('bgUrlMsg').textContent = 'Foto do veículo carregada pelo link.';
+    $('bgUrlMsg').textContent = 'Foto do ambiente carregada pelo link.';
     $('bgUrl').value = '';
     changeBackdrop();
   } catch (err) {

@@ -621,13 +621,13 @@ function blank() {
   return { c, ctx };
 }
 
-function fit(w, h, maxW, maxH, allowUp = false) {
+export function fit(w, h, maxW, maxH, allowUp = false) {
   const s = Math.min(maxW / w, maxH / h, allowUp ? Infinity : 1);
   return { w: Math.round(w * s), h: Math.round(h * s) };
 }
 
 // Desenha o produto em (x, y, w, h), com sombra de contato e sombra suave.
-function drawWithShadow(ctx, layer, x, y, w, h, strength = 1) {
+export function drawWithShadow(ctx, layer, x, y, w, h, strength = 1) {
   const cx = x + w / 2, cy = Math.min(SIZE - 12, y + h - 4);
   const rx = w * 0.46, ry = Math.max(8, Math.min(40, h * 0.045));
   ctx.save();
@@ -693,18 +693,41 @@ function drawCallout(ctx, box, to) {
   ctx.restore();
 }
 
+// Cópia espelhada (a peça do outro lado do veículo).
+export function mirrored(layer) {
+  const m = canvas(layer.width, layer.height);
+  const mctx = m.getContext('2d');
+  mctx.translate(layer.width, 0);
+  mctx.scale(-1, 1);
+  mctx.drawImage(layer, 0, 0);
+  return m;
+}
+
+// Fundo branco puríssimo: o que é quase branco (resto de recorte, fim da
+// sombra) vira #FFFFFF exato, como o Mercado Livre pede na foto principal.
+function pureWhite(c, limit = 246) {
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] >= limit && d[i + 1] >= limit && d[i + 2] >= limit) d[i] = d[i + 1] = d[i + 2] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
 /** 1. Fundo branco. */
 export function renderWhite(layer) {
   const { c, ctx } = blank();
   ctx.drawImage(layer, Math.round((SIZE - layer.width) / 2), Math.round((SIZE - layer.height) / 2) - LIFT);
-  return c;
+  return pureWhite(c);
 }
 
 /** 2. Fundo branco com sombra. */
 export function renderShadow(layer) {
   const { c, ctx } = blank();
   drawWithShadow(ctx, layer, Math.round((SIZE - layer.width) / 2), Math.round((SIZE - layer.height) / 2) - LIFT, layer.width, layer.height);
-  return c;
+  return pureWhite(c);
 }
 
 /** 3. Par do produto (duas unidades lado a lado; a segunda pode ser espelhada). */
